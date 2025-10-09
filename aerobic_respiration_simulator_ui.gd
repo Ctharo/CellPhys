@@ -1,7 +1,7 @@
 # Aerobic Respiration Simulator UI - Godot 4.5
 # Visual representation with dynamic metabolic arrows
 
-extends Node
+extends Control
 
 class_name AerobicRespirationSimulatorUI
 
@@ -53,49 +53,32 @@ var r_etc: float = 0.0
 
 var timestep: float = 0.05
 var total_time: float = 0.0
-
-# ============= UI ELEMENTS =============
-var canvas: Control
-var molecule_boxes: Dictionary = {}
-var reaction_arrows: Dictionary = {}
+var is_paused: bool = false
 
 # ============= MOLECULE DISPLAY INFO =============
-class MoleculeBox:
-	var name: String
-	var pos: Vector2
-	var current: float
-	var max_val: float
-	var color: Color
-	var history: PackedFloat32Array
-
 var molecules_data: Dictionary = {}
 
 func _ready() -> void:
-	setup_ui()
-	initialize_molecule_data()
-	print("🧬 Aerobic Respiration Simulator UI Ready!")
-
-func setup_ui() -> void:
-	"""Setup UI canvas and basic layout"""
-	canvas = Control.new()
-	add_child(canvas)
-	canvas.anchor_right = 1.0
-	canvas.anchor_bottom = 1.0
-	canvas.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	canvas.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	anchor_right = 1.0
+	anchor_bottom = 1.0
 	
+	# Add background color rect
 	var bg = ColorRect.new()
 	bg.color = Color.from_string("#0a0e27", Color.BLACK)
 	bg.anchor_right = 1.0
 	bg.anchor_bottom = 1.0
-	canvas.add_child(bg)
-	canvas.move_child(bg, 0)
+	add_child(bg)
+	move_child(bg, 0)
 	
-	# Connect draw signal
-	canvas.draw.connect(_on_canvas_draw)
-	
-	# Create molecule display boxes
-	create_molecule_boxes()
+	initialize_molecule_data()
+	print("🧬 Aerobic Respiration Simulator UI Ready!")
+	print("Controls:")
+	print("  [SPACE] - Add 5 mM glucose")
+	print("  [ENTER] - Add 10 mM glucose")
+	print("  [O] - Trigger hypoxia")
+	print("  [R] - Reset")
+	print("  [P] - Pause/Resume")
+	print("  [+] Speed up, [-] Slow down")
 
 func initialize_molecule_data() -> void:
 	"""Initialize molecule tracking data"""
@@ -108,7 +91,7 @@ func initialize_molecule_data() -> void:
 		"α-KG": {"value": alpha_ketoglutarate, "pos": Vector2(500, 300), "color": Color.SKY_BLUE, "max": 1.0},
 		"Succinate": {"value": succinate, "pos": Vector2(700, 300), "color": Color.MEDIUM_AQUAMARINE, "max": 1.0},
 		"Malate": {"value": malate, "pos": Vector2(900, 300), "color": Color.TEAL, "max": 1.0},
-		"OAA": {"value": oxaloacetate, "pos": Vector2(700, 100), "color": Color.PURPLE, "max": 1.0},
+		"OAA": {"value": oxaloacetate, "pos": Vector2(700, 100), "color": Color.MAGENTA, "max": 1.0},
 		"NADH": {"value": nadh, "pos": Vector2(100, 500), "color": Color.GREEN, "max": 2.0},
 		"NAD+": {"value": nad, "pos": Vector2(300, 500), "color": Color.DARK_GREEN, "max": 10.0},
 		"ATP": {"value": atp, "pos": Vector2(500, 500), "color": Color.GOLD, "max": 5.0},
@@ -116,30 +99,48 @@ func initialize_molecule_data() -> void:
 		"O2": {"value": oxygen, "pos": Vector2(900, 500), "color": Color.WHITE, "max": 2.0},
 		"CO2": {"value": co2, "pos": Vector2(100, 700), "color": Color.GRAY, "max": 2.0},
 	}
-	
-	for mol_name in molecules_data:
-		molecules_data[mol_name]["history"] = PackedFloat32Array()
-
-func create_molecule_boxes() -> void:
-	"""Create visual boxes for each molecule"""
-	for mol_name in molecules_data:
-		var data = molecules_data[mol_name]
-		var box = Control.new()
-		box.position = data["pos"]
-		box.size = Vector2(80, 80)
-		canvas.add_child(box)
-		molecule_boxes[mol_name] = box
 
 func _process(delta: float) -> void:
+	if is_paused:
+		return
+	
 	total_time += delta
 	
-	if fmod(total_time, timestep) >= 0.0 and fmod(total_time, timestep) < timestep:
+	# Run simulation at fixed timestep
+	if fmod(total_time, timestep) < delta:
 		calculate_reaction_rates()
 		simulate_step()
 		update_concentrations()
-		
-		# Redraw everything
-		queue_redraw_ui()
+	
+	# Handle input
+	handle_input()
+	
+	# Redraw
+	queue_redraw()
+
+func handle_input() -> void:
+	"""Handle user input"""
+	if Input.is_key_pressed(KEY_SPACE):
+		add_glucose(5.0)
+	
+	if Input.is_key_pressed(KEY_ENTER):
+		add_glucose(10.0)
+	
+	if Input.is_key_pressed(KEY_O):
+		oxygen = 0.01
+	
+	if Input.is_key_pressed(KEY_R):
+		reset_simulation()
+	
+	if Input.is_key_pressed(KEY_P):
+		is_paused = !is_paused
+		print("⏸️  Paused!" if is_paused else "▶️  Running!")
+	
+	if Input.is_key_pressed(KEY_PLUS) or Input.is_key_pressed(KEY_EQUAL):
+		timestep = max(timestep - 0.001, 0.01)
+	
+	if Input.is_key_pressed(KEY_MINUS):
+		timestep = min(timestep + 0.001, 0.5)
 
 func calculate_reaction_rates() -> void:
 	"""Calculate all reaction rates using Michaelis-Menten"""
@@ -233,12 +234,6 @@ func update_concentrations() -> void:
 	molecules_data["ADP"]["value"] = adp
 	molecules_data["O2"]["value"] = oxygen
 	molecules_data["CO2"]["value"] = co2
-	
-	# Update history
-	for mol_name in molecules_data:
-		molecules_data[mol_name]["history"].append(molecules_data[mol_name]["value"])
-		if molecules_data[mol_name]["history"].size() > 500:
-			molecules_data[mol_name]["history"] = molecules_data[mol_name]["history"].slice(1)
 
 func clamp_concentrations() -> void:
 	"""Prevent negative concentrations"""
@@ -258,19 +253,12 @@ func clamp_concentrations() -> void:
 	oxygen = max(oxygen, 0.0)
 	co2 = max(co2, 0.0)
 
-func queue_redraw_ui() -> void:
-	"""Draw all UI elements"""
-	if canvas:
-		canvas.queue_redraw()
-
-func _on_canvas_draw() -> void:
-	"""Render all visual elements (called by canvas.draw)"""
-	var window = canvas.get_rect()
-	
+func _draw() -> void:
+	"""Render all visual elements"""
 	# Draw title
-	canvas.draw_string(ThemeDB.fallback_font, window.size / 2 - Vector2(300, 400), "🧬 AEROBIC RESPIRATION DYNAMICS", HORIZONTAL_ALIGNMENT_CENTER, -1, 24, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, Vector2(get_rect().size.x / 2 - 200, 30), "🧬 AEROBIC RESPIRATION DYNAMICS", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
 	
-	# Draw molecule boxes and arrows
+	# Draw molecule boxes
 	for mol_name in molecules_data:
 		var data = molecules_data[mol_name]
 		draw_molecule_box(data["pos"], mol_name, data["value"], data["max"], data["color"])
@@ -284,20 +272,20 @@ func draw_molecule_box(pos: Vector2, name: String, value: float, max_val: float,
 	var normalized = clamp(value / max_val, 0.0, 1.0)
 	
 	# Background
-	canvas.draw_rect(Rect2(pos, size), Color.from_string("#1a1f3a", Color.BLACK), true)
+	draw_rect(Rect2(pos, size), Color.from_string("#1a1f3a", Color.BLACK), true)
 	
 	# Border
-	canvas.draw_rect(Rect2(pos, size), color.lerp(Color.BLACK, 0.3), false, 2.0)
+	draw_rect(Rect2(pos, size), color.lerp(Color.BLACK, 0.3), false, 2.0)
 	
 	# Fill indicator
 	var fill_height = size.y * normalized
 	var fill_rect = Rect2(pos + Vector2(0, size.y - fill_height), Vector2(size.x, fill_height))
-	canvas.draw_rect(fill_rect, color.lerp(Color.WHITE, 0.3), true)
+	draw_rect(fill_rect, color.lerp(Color.WHITE, 0.3), true)
 	
 	# Text
 	var font = ThemeDB.fallback_font
-	canvas.draw_string(font, pos + Vector2(5, 20), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
-	canvas.draw_string(font, pos + Vector2(5, 50), "%.3f" % value, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, color)
+	draw_string(font, pos + Vector2(5, 20), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+	draw_string(font, pos + Vector2(5, 50), "%.3f" % value, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, color)
 
 func draw_metabolic_arrows() -> void:
 	"""Draw dynamic arrows representing metabolic flux"""
@@ -342,7 +330,7 @@ func draw_arrow(from_name: String, to_name: String, rate: float, label: String) 
 	arrow_color = arrow_color.lerp(Color.WHITE, 0.3)
 	
 	# Draw arrow line
-	canvas.draw_line(from_pos, to_pos, arrow_color, thickness)
+	draw_line(from_pos, to_pos, arrow_color, thickness)
 	
 	# Draw arrowhead
 	var direction = (to_pos - from_pos).normalized()
@@ -354,16 +342,37 @@ func draw_arrow(from_name: String, to_name: String, rate: float, label: String) 
 	var base_right = to_pos - direction * arrowhead_size - perpendicular * arrowhead_size * 0.5
 	
 	var points = PackedVector2Array([tip, base_left, base_right])
-	canvas.draw_colored_polygon(points, arrow_color)
+	draw_colored_polygon(points, arrow_color)
 	
 	# Draw enzyme label at midpoint
 	var mid = (from_pos + to_pos) / 2.0
-	canvas.draw_string(ThemeDB.fallback_font, mid, label, HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, mid, label, HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color.WHITE)
 	
 	# Draw rate text with color
 	var rate_text = "%.2f" % rate
-	canvas.draw_string(ThemeDB.fallback_font, mid + Vector2(0, 15), rate_text, HORIZONTAL_ALIGNMENT_CENTER, -1, 9, arrow_color)
+	draw_string(ThemeDB.fallback_font, mid + Vector2(0, 15), rate_text, HORIZONTAL_ALIGNMENT_CENTER, -1, 9, arrow_color)
 
 func add_glucose(amount: float) -> void:
 	"""Add glucose to the system"""
 	glucose += amount
+	print("➕ Added %.2f mM glucose (total: %.2f mM)" % [amount, glucose])
+
+func reset_simulation() -> void:
+	"""Reset to initial state"""
+	glucose = 5.0
+	pyruvate = 0.1
+	acetyl_coa = 0.05
+	citrate = 0.1
+	isocitrate = 0.05
+	alpha_ketoglutarate = 0.08
+	succinate = 0.1
+	malate = 0.1
+	oxaloacetate = 0.15
+	nadh = 0.5
+	nad = 5.0
+	atp = 2.0
+	adp = 3.0
+	oxygen = 1.0
+	co2 = 0.1
+	total_time = 0.0
+	print("🔄 Simulation reset!")
