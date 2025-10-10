@@ -46,7 +46,6 @@ func _ready() -> void:
 	
 	## Initialize simulator
 	simulator = BiochemistrySimulator.new()
-	add_child(simulator)
 	
 	## Create enzyme nodes
 	for enzyme in simulator.enzymes:
@@ -106,7 +105,6 @@ func _input(event: InputEvent) -> void:
 					selected_node = node
 					dragging = true
 					drag_offset = event.position - node.position
-					get_tree().set_input_as_handled()
 					return
 			selected_node = null
 		
