@@ -1,10 +1,10 @@
-# Main.gd - Main scene entry point
-# Create a Node scene and attach this script
+## Main scene entry point for Biochemistry Simulator
+## Attach this script to a Node in your scene
 
 extends Node
 
 func _ready() -> void:
-	"""Initialize the simulator"""
-	var simulator = AerobicRespirationSimulatorUI.new()
-	add_child(simulator)
-	print("✅ Aerobic Respiration Simulator started!")
+	## Create and initialize the UI
+	var ui = BiochemistryMapUI.new()
+	add_child(ui)
+	print("✅ Biochemistry Simulator launched!")
