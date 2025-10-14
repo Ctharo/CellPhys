@@ -32,6 +32,9 @@ class EnzymeNode:
 	func get_rect() -> Rect2:
 		return Rect2(position, size)
 
+func _init(p_simulator:BiochemistrySimulator) -> void:
+	simulator = p_simulator
+
 func _ready() -> void:
 	anchor_right = 1.0
 	anchor_bottom = 1.0
@@ -43,10 +46,7 @@ func _ready() -> void:
 	bg.anchor_bottom = 1.0
 	add_child(bg)
 	move_child(bg, 0)
-	
-	## Initialize simulator
-	simulator = BiochemistrySimulator.new()
-	
+		
 	## Create enzyme nodes
 	for enzyme in simulator.enzymes:
 		var node = EnzymeNode.new(enzyme)
