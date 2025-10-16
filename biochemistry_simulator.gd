@@ -141,7 +141,7 @@ func initialize_molecules() -> void:
 	molecules["oxygen"] = Molecule.new("O₂", 1.0, "mitochondrion")
 	molecules["co2"] = Molecule.new("CO₂", 0.1, "mitochondrion")
 
-## ENZYME INITIALIZATION: Enzymes are now the primary simulation units
+## ENZYME INITIALIZATION: Enzymes are the primary simulation units
 func initialize_enzymes() -> void:
 	_create_enzyme_pfk()
 	_create_enzyme_pdh()
@@ -324,14 +324,12 @@ func _calculate_modulation_factor(enzyme: Enzyme) -> float:
 	for inhibitor_mol in enzyme.allosteric_inhibitors:
 		if molecules.has(inhibitor_mol):
 			var data = enzyme.allosteric_inhibitors[inhibitor_mol]
-			var conc = molecules[inhibitor_mol].concentration
 			factor *= data["Vmax_factor"]
 	
 	## Allosteric activators enhance activity
 	for activator_mol in enzyme.allosteric_activators:
 		if molecules.has(activator_mol):
 			var data = enzyme.allosteric_activators[activator_mol]
-			var conc = molecules[activator_mol].concentration
 			factor *= data["Vmax_factor"]
 	
 	return clamp(factor, 0.1, 1.5)
