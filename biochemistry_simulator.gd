@@ -280,7 +280,7 @@ func _calculate_enzyme_rate(enzyme: Enzyme) -> float:
 		"michaelis_menten":
 			return _calculate_mm_rate_for_enzyme(enzyme, vmax)
 		"hill":
-			return _calculate_hill_rate_for_enzyme(enzyme, vmax)
+			return 0.0 ## TODO
 		_:
 			return 0.0
 
@@ -311,10 +311,6 @@ func _calculate_mm_rate_for_enzyme(enzyme: Enzyme, vmax: float) -> float:
 	
 	return 0.0
 
-## Hill coefficient kinetics (cooperative binding)
-func _calculate_hill_rate_for_enzyme(enzyme: Enzyme, vmax: float) -> float:
-	## TODO: Implement Hill kinetics
-	return 0.0
 
 ## Calculate how regulatory molecules affect enzyme activity
 func _calculate_modulation_factor(enzyme: Enzyme) -> float:
