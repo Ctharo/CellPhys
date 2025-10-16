@@ -149,6 +149,8 @@ func initialize_enzymes() -> void:
 	_create_enzyme_isocitrate_dehydrogenase()
 	_create_enzyme_alpha_kg_dehydrogenase()
 	_create_enzyme_succinate_dehydrogenase()
+	_create_enzyme_succinate_dehydrogenase_complex2() 
+	_create_enzyme_fumarase()
 	_create_enzyme_malate_dehydrogenase()
 	_create_enzyme_electron_transport()
 
@@ -240,12 +242,40 @@ func _create_enzyme_malate_dehydrogenase() -> void:
 	enzyme.add_km("malate", 0.1)
 	enzyme.add_inhibitor("nadh", 0.4)
 	enzymes.append(enzyme)
+	
+## Succinate Dehydrogenase (Complex II): Converts Succinate to Fumarate
+## This is the REAL succinate dehydrogenase - part of both TCA cycle and ETC
+## NOTE: Your existing SDH actually does Succinyl-CoA → Succinate
+## This enzyme does Succinate → Fumarate and produces FADH2
+func _create_enzyme_succinate_dehydrogenase_complex2() -> void:
+	var enzyme = Enzyme.new("sdh_c2", "Succinate Dehydrogenase (Complex II)", "mitochondrion")
+	enzyme.concentration = 0.01
+	enzyme.vmax_per_unit = 7.0
+	enzyme.set_substrate("succinate", 1.0)
+	enzyme.set_substrate("fad", 1.0)
+	enzyme.set_product("fumarate", 1.0)
+	enzyme.set_product("fadh2", 1.0)
+	enzyme.add_km("succinate", 0.03)
+	enzyme.add_km("fad", 0.5)
+	enzyme.add_inhibitor("oxaloacetate", 0.6)
+	enzymes.append(enzyme)
+
+## Fumarase: Converts Fumarate to Malate
+## Adds water (hydration reaction)
+func _create_enzyme_fumarase() -> void:
+	var enzyme = Enzyme.new("fum", "Fumarase", "mitochondrion")
+	enzyme.concentration = 0.015
+	enzyme.vmax_per_unit = 10.0
+	enzyme.set_substrate("fumarate", 1.0)
+	enzyme.set_product("malate", 1.0)
+	enzyme.add_km("fumarate", 0.05)
+	enzymes.append(enzyme)
 
 ## Electron Transport Chain: ATP generation
 func _create_enzyme_electron_transport() -> void:
 	var enzyme = Enzyme.new("etc", "Electron Transport Chain", "mitochondrion")
 	enzyme.concentration = 0.005
-	enzyme.vmax_per_unit = 20.0
+	enzyme.vmax_per_unit = 50.0
 	enzyme.set_substrate("nadh", 1.0)
 	enzyme.set_substrate("oxygen", 0.5)
 	enzyme.set_product("nad", 1.0)
@@ -253,6 +283,8 @@ func _create_enzyme_electron_transport() -> void:
 	enzyme.add_km("nadh", 0.1)
 	enzyme.add_km("oxygen", 0.001)
 	enzymes.append(enzyme)
+	
+
 
 ## SIMULATION CORE: Each enzyme catalyzes its own transformation
 func simulate_step() -> void:
