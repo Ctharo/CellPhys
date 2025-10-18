@@ -1,8 +1,8 @@
-extends Node
 ## Simplified 3-enzyme feedback loop with source-sink dynamics
 ## Product C inhibits Enzyme 1, creating negative feedback regulation
 ## A → B → C → [sink], with continuous A replenishment
 class_name SimpleEnzymeSimulator
+extends Node
 
 ## Represents a chemical molecule with concentration
 class Molecule:
