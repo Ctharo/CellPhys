@@ -1,0 +1,162 @@
+[gd_scene load_steps=2 format=3 uid="uid://chbm34yfhdlou"]
+
+[ext_resource type="Script" uid="uid://jkoy5w1wdlvj" path="res://enzyme_simulator.gd" id="1"]
+
+[node name="EnzymeSimulator" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.118, 0.235, 0.447, 1)
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme_override_constants/margin_left = 30
+theme_override_constants/margin_top = 30
+theme_override_constants/margin_right = 30
+theme_override_constants/margin_bottom = 30
+
+[node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="LeftPanel" type="VBoxContainer" parent="MarginContainer/HBoxContainer"]
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.7
+theme_override_constants/separation = 20
+
+[node name="Title" type="Label" parent="MarginContainer/HBoxContainer/LeftPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "🧬 Enzyme Simulator"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="MarginContainer/HBoxContainer/LeftPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Feedback Loop Regulation"
+horizontal_alignment = 1
+
+[node name="StatsLabel" type="Label" parent="MarginContainer/HBoxContainer/LeftPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Time: 0.0s | Iteration: 0"
+horizontal_alignment = 1
+
+[node name="ControlPanel" type="HBoxContainer" parent="MarginContainer/HBoxContainer/LeftPanel"]
+layout_mode = 2
+theme_override_constants/separation = 15
+alignment = 1
+
+[node name="PauseButton" type="Button" parent="MarginContainer/HBoxContainer/LeftPanel/ControlPanel"]
+custom_minimum_size = Vector2(120, 40)
+layout_mode = 2
+text = "Pause"
+
+[node name="ResetButton" type="Button" parent="MarginContainer/HBoxContainer/LeftPanel/ControlPanel"]
+custom_minimum_size = Vector2(120, 40)
+layout_mode = 2
+text = "Reset"
+
+[node name="MoleculesPanel" type="PanelContainer" parent="MarginContainer/HBoxContainer/LeftPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="VBox" type="VBoxContainer" parent="MarginContainer/HBoxContainer/LeftPanel/MoleculesPanel"]
+layout_mode = 2
+theme_override_constants/separation = 15
+
+[node name="Title" type="Label" parent="MarginContainer/HBoxContainer/LeftPanel/MoleculesPanel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3, 0.686, 0.314, 1)
+theme_override_font_sizes/font_size = 20
+text = "📊 Molecules"
+
+[node name="AddMoleculeButton" type="Button" parent="MarginContainer/HBoxContainer/LeftPanel/MoleculesPanel/VBox"]
+layout_mode = 2
+text = "+ Add Molecule"
+
+[node name="RightPanel" type="VBoxContainer" parent="MarginContainer/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 2.0
+theme_override_constants/separation = 20
+
+[node name="EnzymesHeader" type="HBoxContainer" parent="MarginContainer/HBoxContainer/RightPanel"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="MarginContainer/HBoxContainer/RightPanel/EnzymesHeader"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.3, 0.686, 0.314, 1)
+theme_override_font_sizes/font_size = 24
+text = "⚗️ Enzymes"
+
+[node name="AddEnzymeButton" type="Button" parent="MarginContainer/HBoxContainer/RightPanel/EnzymesHeader"]
+custom_minimum_size = Vector2(150, 40)
+layout_mode = 2
+text = "+ Add Enzyme"
+
+[node name="HSplitContainer" type="HSplitContainer" parent="MarginContainer/HBoxContainer/RightPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="EnzymeListPanel" type="PanelContainer" parent="MarginContainer/HBoxContainer/RightPanel/HSplitContainer"]
+custom_minimum_size = Vector2(350, 0)
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="MarginContainer/HBoxContainer/RightPanel/HSplitContainer/EnzymeListPanel"]
+layout_mode = 2
+
+[node name="ListTitle" type="Label" parent="MarginContainer/HBoxContainer/RightPanel/HSplitContainer/EnzymeListPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Enzyme List"
+horizontal_alignment = 1
+
+[node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/HBoxContainer/RightPanel/HSplitContainer/EnzymeListPanel/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="EnzymeList" type="VBoxContainer" parent="MarginContainer/HBoxContainer/RightPanel/HSplitContainer/EnzymeListPanel/VBox/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 5
+
+[node name="EnzymeDetailPanel" type="PanelContainer" parent="MarginContainer/HBoxContainer/RightPanel/HSplitContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/HBoxContainer/RightPanel/HSplitContainer/EnzymeDetailPanel"]
+layout_mode = 2
+
+[node name="EnzymeDetail" type="VBoxContainer" parent="MarginContainer/HBoxContainer/RightPanel/HSplitContainer/EnzymeDetailPanel/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 15
+
+[node name="PlaceholderLabel" type="Label" parent="MarginContainer/HBoxContainer/RightPanel/HSplitContainer/EnzymeDetailPanel/ScrollContainer/EnzymeDetail"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Select an enzyme to view details"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[connection signal="pressed" from="MarginContainer/HBoxContainer/LeftPanel/ControlPanel/PauseButton" to="." method="_on_pause_button_pressed"]
+[connection signal="pressed" from="MarginContainer/HBoxContainer/LeftPanel/ControlPanel/ResetButton" to="." method="_on_reset_button_pressed"]
+[connection signal="pressed" from="MarginContainer/HBoxContainer/LeftPanel/MoleculesPanel/VBox/AddMoleculeButton" to="." method="_on_add_molecule_pressed"]
+[connection signal="pressed" from="MarginContainer/HBoxContainer/RightPanel/EnzymesHeader/AddEnzymeButton" to="." method="_on_add_enzyme_pressed"]
