@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://chbm34yfhdlou"]
+[gd_scene load_steps=2 format=3]
 
 [ext_resource type="Script" uid="uid://jkoy5w1wdlvj" path="res://enzyme_simulator.gd" id="1"]
+
 
 [node name="EnzymeSimulator" type="Control"]
 layout_mode = 3
@@ -93,7 +94,7 @@ text = "+ Add Molecule"
 [node name="RightPanel" type="VBoxContainer" parent="MarginContainer/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 2.0
+size_flags_stretch_ratio = 1.5
 theme_override_constants/separation = 20
 
 [node name="EnzymesHeader" type="HBoxContainer" parent="MarginContainer/HBoxContainer/RightPanel"]
@@ -116,7 +117,7 @@ layout_mode = 2
 size_flags_vertical = 3
 
 [node name="EnzymeListPanel" type="PanelContainer" parent="MarginContainer/HBoxContainer/RightPanel/HSplitContainer"]
-custom_minimum_size = Vector2(350, 0)
+custom_minimum_size = Vector2(250, 0)
 layout_mode = 2
 
 [node name="VBox" type="VBoxContainer" parent="MarginContainer/HBoxContainer/RightPanel/HSplitContainer/EnzymeListPanel"]
