@@ -73,22 +73,187 @@ var enzyme_count: int = 0
 var molecule_ui_elements: Dictionary = {}
 var enzyme_list_buttons: Dictionary = {}
 var selected_enzyme: Enzyme = null
+var selected_molecule: String = ""
 
 ## Drag and drop state
 var dragging_molecule: String = ""
 
 ## UI References
-@onready var stats_label = $MarginContainer/HBoxContainer/LeftPanel/StatsLabel
-@onready var pause_button = $MarginContainer/HBoxContainer/LeftPanel/ControlPanel/PauseButton
-@onready var molecules_panel = $MarginContainer/HBoxContainer/LeftPanel/MoleculesPanel/VBox
-@onready var enzyme_list_container = $MarginContainer/HBoxContainer/RightPanel/HSplitContainer/EnzymeListPanel/VBox/ScrollContainer/EnzymeList
-@onready var enzyme_detail_container = $MarginContainer/HBoxContainer/RightPanel/HSplitContainer/EnzymeDetailPanel/ScrollContainer/EnzymeDetail
+var stats_label: Label
+var pause_button: Button
+var molecules_panel: VBoxContainer
+var enzyme_list_container: VBoxContainer
+var enzyme_detail_container: VBoxContainer
+var molecule_detail_container: VBoxContainer
 
 func _ready() -> void:
+	build_ui()
 	initialize_molecules()
 	initialize_enzymes()
 	update_ui()
 	print("✅ Enzyme Feedback Simulator initialized")
+
+func build_ui() -> void:
+	## Main layout
+	var margin = MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	add_child(margin)
+
+	var hbox = HBoxContainer.new()
+	hbox.add_theme_constant_override("separation", 10)
+	margin.add_child(hbox)
+
+	## Left Panel
+	var left_panel = VBoxContainer.new()
+	left_panel.custom_minimum_size = Vector2(350, 0)
+	left_panel.add_theme_constant_override("separation", 10)
+	hbox.add_child(left_panel)
+
+	## Stats
+	stats_label = Label.new()
+	stats_label.text = "Time: 0.0s | Iteration: 0"
+	stats_label.add_theme_font_size_override("font_size", 18)
+	left_panel.add_child(stats_label)
+
+	## Control Panel
+	var control_panel = HBoxContainer.new()
+	control_panel.add_theme_constant_override("separation", 10)
+	left_panel.add_child(control_panel)
+
+	pause_button = Button.new()
+	pause_button.text = "Pause"
+	pause_button.pressed.connect(_on_pause_button_pressed)
+	control_panel.add_child(pause_button)
+
+	var reset_button = Button.new()
+	reset_button.text = "Reset"
+	reset_button.pressed.connect(_on_reset_button_pressed)
+	control_panel.add_child(reset_button)
+
+	## Molecules Panel
+	var mol_panel = PanelContainer.new()
+	mol_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	left_panel.add_child(mol_panel)
+
+	var mol_vbox = VBoxContainer.new()
+	mol_vbox.add_theme_constant_override("separation", 5)
+	mol_panel.add_child(mol_vbox)
+
+	var mol_header = HBoxContainer.new()
+	mol_vbox.add_child(mol_header)
+
+	var mol_title = Label.new()
+	mol_title.text = "Molecules"
+	mol_title.add_theme_font_size_override("font_size", 18)
+	mol_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mol_header.add_child(mol_title)
+
+	var add_mol_btn = Button.new()
+	add_mol_btn.text = "+ Add"
+	add_mol_btn.pressed.connect(_on_add_molecule_pressed)
+	mol_header.add_child(add_mol_btn)
+
+	var mol_scroll = ScrollContainer.new()
+	mol_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	mol_vbox.add_child(mol_scroll)
+
+	molecules_panel = VBoxContainer.new()
+	molecules_panel.add_theme_constant_override("separation", 5)
+	molecules_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mol_scroll.add_child(molecules_panel)
+
+	## Molecule Detail Panel
+	var mol_detail_panel = PanelContainer.new()
+	mol_detail_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	left_panel.add_child(mol_detail_panel)
+
+	var mol_detail_vbox = VBoxContainer.new()
+	mol_detail_panel.add_child(mol_detail_vbox)
+
+	var mol_detail_title = Label.new()
+	mol_detail_title.text = "Molecule Details"
+	mol_detail_title.add_theme_font_size_override("font_size", 18)
+	mol_detail_vbox.add_child(mol_detail_title)
+
+	var mol_detail_scroll = ScrollContainer.new()
+	mol_detail_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	mol_detail_vbox.add_child(mol_detail_scroll)
+
+	molecule_detail_container = VBoxContainer.new()
+	molecule_detail_container.add_theme_constant_override("separation", 10)
+	molecule_detail_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mol_detail_scroll.add_child(molecule_detail_container)
+
+	var mol_placeholder = Label.new()
+	mol_placeholder.text = "Click a molecule info button to view details"
+	mol_placeholder.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	molecule_detail_container.add_child(mol_placeholder)
+
+	## Right Panel
+	var right_panel = HSplitContainer.new()
+	right_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hbox.add_child(right_panel)
+
+	## Enzyme List Panel
+	var enzyme_list_panel = PanelContainer.new()
+	enzyme_list_panel.custom_minimum_size = Vector2(200, 0)
+	right_panel.add_child(enzyme_list_panel)
+
+	var enz_list_vbox = VBoxContainer.new()
+	enzyme_list_panel.add_child(enz_list_vbox)
+
+	var enz_list_header = HBoxContainer.new()
+	enz_list_vbox.add_child(enz_list_header)
+
+	var enz_list_title = Label.new()
+	enz_list_title.text = "Enzymes"
+	enz_list_title.add_theme_font_size_override("font_size", 18)
+	enz_list_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	enz_list_header.add_child(enz_list_title)
+
+	var add_enz_btn = Button.new()
+	add_enz_btn.text = "+ Add"
+	add_enz_btn.pressed.connect(_on_add_enzyme_pressed)
+	enz_list_header.add_child(add_enz_btn)
+
+	var enz_list_scroll = ScrollContainer.new()
+	enz_list_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	enz_list_vbox.add_child(enz_list_scroll)
+
+	enzyme_list_container = VBoxContainer.new()
+	enzyme_list_container.add_theme_constant_override("separation", 5)
+	enzyme_list_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	enz_list_scroll.add_child(enzyme_list_container)
+
+	## Enzyme Detail Panel
+	var enzyme_detail_panel = PanelContainer.new()
+	right_panel.add_child(enzyme_detail_panel)
+
+	var enz_detail_vbox = VBoxContainer.new()
+	enzyme_detail_panel.add_child(enz_detail_vbox)
+
+	var enz_detail_title = Label.new()
+	enz_detail_title.text = "Enzyme Details"
+	enz_detail_title.add_theme_font_size_override("font_size", 18)
+	enz_detail_vbox.add_child(enz_detail_title)
+
+	var enz_detail_scroll = ScrollContainer.new()
+	enz_detail_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	enz_detail_vbox.add_child(enz_detail_scroll)
+
+	enzyme_detail_container = VBoxContainer.new()
+	enzyme_detail_container.add_theme_constant_override("separation", 10)
+	enzyme_detail_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	enz_detail_scroll.add_child(enzyme_detail_container)
+
+	var enz_placeholder = Label.new()
+	enz_placeholder.text = "Select an enzyme to view details"
+	enz_placeholder.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	enzyme_detail_container.add_child(enz_placeholder)
 
 func _process(delta: float) -> void:
 	if is_paused:
@@ -102,9 +267,11 @@ func _process(delta: float) -> void:
 
 ## Initialize starting molecules
 func initialize_molecules() -> void:
-	add_molecule("A", 5.0)
-	add_molecule("B", 0.1)
-	add_molecule("C", 0.05)
+	add_molecule("ADP_precursor", 5.0)
+	add_molecule("Pi_precursor", 5.0)
+	add_molecule("ADP", 0.1)
+	add_molecule("Phosphate", 0.1)
+	add_molecule("ATP", 0.05)
 
 ## Initialize starting enzymes
 func initialize_enzymes() -> void:
@@ -295,6 +462,9 @@ func update_ui() -> void:
 
 	if selected_enzyme:
 		update_enzyme_detail_view()
+	
+	if selected_molecule != "":
+		update_molecule_detail_view()
 
 func update_enzyme_detail_view() -> void:
 	if not selected_enzyme:
@@ -312,6 +482,190 @@ func update_enzyme_detail_view() -> void:
 			child.text = rate_text
 		elif child.name == "ConcentrationLabel":
 			child.text = "Enzyme Concentration: %.4f" % selected_enzyme.concentration
+
+func show_molecule_details(mol_name: String) -> void:
+	selected_molecule = mol_name
+	selected_enzyme = null
+	
+	## Clear enzyme detail panel
+	for child in enzyme_detail_container.get_children():
+		child.queue_free()
+	var placeholder = Label.new()
+	placeholder.text = "Select an enzyme to view details"
+	placeholder.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	enzyme_detail_container.add_child(placeholder)
+	
+	## Build molecule detail view
+	build_molecule_detail_view(mol_name)
+
+func build_molecule_detail_view(mol_name: String) -> void:
+	for child in molecule_detail_container.get_children():
+		child.queue_free()
+	
+	if not molecules.has(mol_name):
+		return
+	
+	var mol = molecules[mol_name]
+	
+	## Header
+	var header = Label.new()
+	header.text = "🧪 Molecule: %s" % mol_name
+	header.add_theme_color_override("font_color", Color(0.506, 0.784, 0.514))
+	header.add_theme_font_size_override("font_size", 20)
+	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	molecule_detail_container.add_child(header)
+	
+	## Current concentration
+	var conc_label = Label.new()
+	conc_label.name = "ConcentrationLabel"
+	conc_label.text = "Concentration: %.3f mM" % mol.concentration
+	conc_label.add_theme_font_size_override("font_size", 16)
+	conc_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	molecule_detail_container.add_child(conc_label)
+	
+	## Find all enzymes affecting this molecule
+	var producing_enzymes: Array = []
+	var consuming_enzymes: Array = []
+	
+	for enzyme in enzymes:
+		if enzyme.products.has(mol_name):
+			producing_enzymes.append(enzyme)
+		if enzyme.substrates.has(mol_name):
+			consuming_enzymes.append(enzyme)
+	
+	## Show producing enzymes
+	if not producing_enzymes.is_empty():
+		var prod_header = _create_section_label("Producing Enzymes")
+		molecule_detail_container.add_child(prod_header)
+		
+		for enzyme in producing_enzymes:
+			var stoich = enzyme.products[mol_name]
+			var rate = enzyme.current_rate * stoich
+			
+			var enzyme_panel = Panel.new()
+			enzyme_panel.custom_minimum_size = Vector2(0, 60)
+			molecule_detail_container.add_child(enzyme_panel)
+			
+			var vbox = VBoxContainer.new()
+			vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 10)
+			enzyme_panel.add_child(vbox)
+			
+			var name_label = Label.new()
+			name_label.text = "⚗️ %s" % enzyme.name
+			name_label.add_theme_font_size_override("font_size", 14)
+			vbox.add_child(name_label)
+			
+			var rate_label = Label.new()
+			rate_label.name = "RateLabel_%s" % enzyme.id
+			rate_label.text = "+%.3f mM/s (stoich: ×%.1f)" % [rate, stoich]
+			rate_label.add_theme_color_override("font_color", Color(0.4, 1.0, 0.4))
+			vbox.add_child(rate_label)
+	else:
+		var no_prod = Label.new()
+		no_prod.text = "No enzymes producing this molecule"
+		no_prod.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+		molecule_detail_container.add_child(no_prod)
+	
+	## Show consuming enzymes
+	if not consuming_enzymes.is_empty():
+		var cons_header = _create_section_label("Consuming Enzymes")
+		molecule_detail_container.add_child(cons_header)
+		
+		for enzyme in consuming_enzymes:
+			var stoich = enzyme.substrates[mol_name]
+			var rate = enzyme.current_rate * stoich
+			
+			var enzyme_panel = Panel.new()
+			enzyme_panel.custom_minimum_size = Vector2(0, 60)
+			molecule_detail_container.add_child(enzyme_panel)
+			
+			var vbox = VBoxContainer.new()
+			vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 10)
+			enzyme_panel.add_child(vbox)
+			
+			var name_label = Label.new()
+			name_label.text = "⚗️ %s" % enzyme.name
+			name_label.add_theme_font_size_override("font_size", 14)
+			vbox.add_child(name_label)
+			
+			var rate_label = Label.new()
+			rate_label.name = "RateLabel_%s" % enzyme.id
+			rate_label.text = "-%.3f mM/s (stoich: ×%.1f)" % [rate, stoich]
+			rate_label.add_theme_color_override("font_color", Color(1.0, 0.4, 0.4))
+			vbox.add_child(rate_label)
+	else:
+		var no_cons = Label.new()
+		no_cons.text = "No enzymes consuming this molecule"
+		no_cons.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+		molecule_detail_container.add_child(no_cons)
+	
+	## Net rate
+	var net_rate = 0.0
+	for enzyme in producing_enzymes:
+		var stoich = enzyme.products[mol_name]
+		net_rate += enzyme.current_rate * stoich
+	for enzyme in consuming_enzymes:
+		var stoich = enzyme.substrates[mol_name]
+		net_rate -= enzyme.current_rate * stoich
+	
+	var net_header = _create_section_label("Net Rate")
+	molecule_detail_container.add_child(net_header)
+	
+	var net_label = Label.new()
+	net_label.name = "NetRateLabel"
+	var net_sign = "+" if net_rate >= 0 else ""
+	var net_color = Color(0.4, 1.0, 0.4) if net_rate >= 0 else Color(1.0, 0.4, 0.4)
+	net_label.text = "%s%.3f mM/s" % [net_sign, net_rate]
+	net_label.add_theme_color_override("font_color", net_color)
+	net_label.add_theme_font_size_override("font_size", 16)
+	net_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	molecule_detail_container.add_child(net_label)
+
+func update_molecule_detail_view() -> void:
+	if selected_molecule == "" or not molecules.has(selected_molecule):
+		return
+	
+	var mol = molecules[selected_molecule]
+	
+	## Update concentration
+	for child in molecule_detail_container.get_children():
+		if child.name == "ConcentrationLabel":
+			child.text = "Concentration: %.3f mM" % mol.concentration
+	
+	## Update enzyme rates
+	for enzyme in enzymes:
+		var rate_label_name = "RateLabel_%s" % enzyme.id
+		for child in molecule_detail_container.get_children():
+			if child is Panel:
+				var vbox = child.get_child(0) if child.get_child_count() > 0 else null
+				if vbox:
+					for label in vbox.get_children():
+						if label.name == rate_label_name:
+							if enzyme.products.has(selected_molecule):
+								var stoich = enzyme.products[selected_molecule]
+								var rate = enzyme.current_rate * stoich
+								label.text = "+%.3f mM/s (stoich: ×%.1f)" % [rate, stoich]
+							elif enzyme.substrates.has(selected_molecule):
+								var stoich = enzyme.substrates[selected_molecule]
+								var rate = enzyme.current_rate * stoich
+								label.text = "-%.3f mM/s (stoich: ×%.1f)" % [rate, stoich]
+	
+	## Update net rate
+	var net_rate = 0.0
+	for enzyme in enzymes:
+		if enzyme.products.has(selected_molecule):
+			var stoich = enzyme.products[selected_molecule]
+			net_rate += enzyme.current_rate * stoich
+		if enzyme.substrates.has(selected_molecule):
+			var stoich = enzyme.substrates[selected_molecule]
+			net_rate -= enzyme.current_rate * stoich
+	
+	for child in molecule_detail_container.get_children():
+		if child.name == "NetRateLabel":
+			var net_sign = "+" if net_rate >= 0 else ""
+			var net_color = Color(0.4, 1.0, 0.4) if net_rate >= 0 else Color(1.0, 0.4, 0.4)
+			child.text = "%s%.3f mM/s" % [net_sign, net_rate]
+			child.add_theme_color_override("font_color", net_color)
 
 ## Button callbacks
 func _on_pause_button_pressed() -> void:
@@ -415,6 +769,14 @@ func add_molecule(mol_name: String, concentration: float) -> void:
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hbox.add_child(label)
 
+	## Info button to show molecule details
+	var info_btn = Button.new()
+	info_btn.text = "ℹ"
+	info_btn.custom_minimum_size = Vector2(30, 0)
+	info_btn.tooltip_text = "View molecule details"
+	info_btn.pressed.connect(func(): show_molecule_details(mol_name))
+	hbox.add_child(info_btn)
+
 	## Delete button
 	var delete_btn = Button.new()
 	delete_btn.text = "✕"
@@ -498,6 +860,16 @@ func remove_enzyme(enzyme: Enzyme) -> void:
 
 func _on_enzyme_selected(enzyme: Enzyme) -> void:
 	selected_enzyme = enzyme
+	selected_molecule = ""
+	
+	## Clear molecule detail panel
+	for child in molecule_detail_container.get_children():
+		child.queue_free()
+	var placeholder = Label.new()
+	placeholder.text = "Click a molecule info button to view details"
+	placeholder.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	molecule_detail_container.add_child(placeholder)
+	
 	build_enzyme_detail_view(enzyme)
 
 ## Build enzyme detail view with drag-drop slots
