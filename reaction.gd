@@ -20,6 +20,9 @@ var initial_km: float = 0.5      ## Initial Km for reset
 var delta_g: float = -5.0        ## ΔG° in kJ/mol (standard free energy change)
 var temperature: float = 310.0   ## Temperature in Kelvin (37°C)
 
+## Reaction constraints
+var is_irreversible: bool = false  ## If true, reaction cannot go in reverse
+
 ## Runtime state
 var current_forward_rate: float = 0.0
 var current_reverse_rate: float = 0.0
@@ -120,6 +123,11 @@ func calculate_forward_rate(molecules: Dictionary, enzyme_conc: float) -> float:
 
 ## Calculate reverse rate (products → substrates)
 func calculate_reverse_rate(molecules: Dictionary, enzyme_conc: float) -> float:
+	## Check for irreversibility first
+	if is_irreversible:
+		current_reverse_rate = 0.0
+		return 0.0
+	
 	if enzyme_conc <= 0.0 or is_source() or is_sink():
 		current_reverse_rate = 0.0
 		return 0.0
@@ -188,4 +196,6 @@ func get_summary() -> String:
 	if product_str == "":
 		product_str = "∅"
 	
-	return "%s ⇄ %s" % [substrate_str, product_str]
+	## Use arrow to indicate irreversibility
+	var arrow = "→" if is_irreversible else "⇄"
+	return "%s %s %s" % [substrate_str, arrow, product_str]
