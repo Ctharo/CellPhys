@@ -58,43 +58,47 @@ func _process(delta: float) -> void:
 ## ============================================================================
 
 func initialize_molecules() -> void:
-	add_molecule("ADP", 2.0)
-	add_molecule("Pi", 2.0)  ## Inorganic phosphate
-	add_molecule("ATP", 0.05)
-	add_molecule("Glucose", 5.0)
-	add_molecule("G6P", 0.1)  ## Glucose-6-phosphate
-	add_molecule("Pyruvate", 0.1)
+	## Start with conditions far from equilibrium to see dynamic behavior
+	add_molecule("ADP", 5.0)  ## High ADP
+	add_molecule("Pi", 5.0)   ## High inorganic phosphate
+	add_molecule("ATP", 0.01)  ## Low ATP (will build up)
+	add_molecule("Glucose", 10.0)  ## High glucose (fuel source)
+	add_molecule("G6P", 0.05)  ## Very low G6P
+	add_molecule("Pyruvate", 0.05)  ## Very low Pyruvate
 
 func initialize_enzymes() -> void:
 	## Glucose source (represents external glucose supply)
 	var glucose_source = add_enzyme_object("Glucose Transporter")
+	glucose_source.concentration = 0.005  ## Lower concentration
 	var gluc_import = create_reaction("Glucose Import")
 	gluc_import.products["Glucose"] = 1.0
-	gluc_import.delta_g = -5.0  ## Slightly favorable
-	gluc_import.vmax = 2.0
-	gluc_import.initial_vmax = 2.0
-	gluc_import.km = 0.3
-	gluc_import.initial_km = 0.3
+	gluc_import.delta_g = -8.0  ## More favorable to push glucose in
+	gluc_import.vmax = 1.5  ## Slower import
+	gluc_import.initial_vmax = 1.5
+	gluc_import.km = 0.5
+	gluc_import.initial_km = 0.5
 	glucose_source.add_reaction(gluc_import)
 	
 	## Hexokinase: Glucose + ATP → G6P + ADP (consumes ATP)
 	var hexokinase = add_enzyme_object("Hexokinase")
+	hexokinase.concentration = 0.02
 	var hex_rxn = create_reaction("Glucose Phosphorylation")
 	hex_rxn.substrates["Glucose"] = 1.0
 	hex_rxn.substrates["ATP"] = 1.0
 	hex_rxn.products["G6P"] = 1.0
 	hex_rxn.products["ADP"] = 1.0
 	hex_rxn.delta_g = -16.7  ## Highly favorable, ATP hydrolysis
-	hex_rxn.vmax = 3.0
-	hex_rxn.initial_vmax = 3.0
-	hex_rxn.km = 0.1
-	hex_rxn.initial_km = 0.1
+	hex_rxn.vmax = 5.0  ## Higher capacity
+	hex_rxn.initial_vmax = 5.0
+	hex_rxn.km = 0.15  ## Lower Km for better substrate binding
+	hex_rxn.initial_km = 0.15
 	hexokinase.add_reaction(hex_rxn)
-	hexokinase.inhibitors["G6P"] = 0.3  ## Product inhibition
+	hexokinase.inhibitors["G6P"] = 0.5  ## Product inhibition (higher Ki)
 	
 	## Glycolytic enzyme: G6P → Pyruvate + ATP (net ATP production)
 	## Simplified representation of glycolysis
 	var glycolysis = add_enzyme_object("Glycolysis Enzymes")
+	glycolysis.concentration = 0.015
 	var glyc_rxn = create_reaction("Glycolysis")
 	glyc_rxn.substrates["G6P"] = 1.0
 	glyc_rxn.substrates["ADP"] = 2.0
@@ -102,40 +106,42 @@ func initialize_enzymes() -> void:
 	glyc_rxn.products["Pyruvate"] = 2.0
 	glyc_rxn.products["ATP"] = 2.0
 	glyc_rxn.delta_g = -85.0  ## Very favorable overall
-	glyc_rxn.vmax = 1.5
-	glyc_rxn.initial_vmax = 1.5
-	glyc_rxn.km = 0.2
-	glyc_rxn.initial_km = 0.2
+	glyc_rxn.vmax = 3.0  ## Moderate rate
+	glyc_rxn.initial_vmax = 3.0
+	glyc_rxn.km = 0.3  ## Higher Km
+	glyc_rxn.initial_km = 0.3
 	glycolysis.add_reaction(glyc_rxn)
 	
 	## ATP Synthase (represents oxidative phosphorylation)
 	## ADP + Pi → ATP (powered by proton gradient in reality)
 	var atp_synthase = add_enzyme_object("ATP Synthase")
+	atp_synthase.concentration = 0.03  ## Higher concentration
 	var atp_synth_rxn = create_reaction("ATP Synthesis")
 	atp_synth_rxn.substrates["ADP"] = 1.0
 	atp_synth_rxn.substrates["Pi"] = 1.0
 	atp_synth_rxn.products["ATP"] = 1.0
 	atp_synth_rxn.delta_g = 30.5  ## Unfavorable, requires energy input
-	atp_synth_rxn.vmax = 4.0
-	atp_synth_rxn.initial_vmax = 4.0
-	atp_synth_rxn.km = 0.5
-	atp_synth_rxn.initial_km = 0.5
+	atp_synth_rxn.vmax = 8.0  ## High capacity for ATP synthesis
+	atp_synth_rxn.initial_vmax = 8.0
+	atp_synth_rxn.km = 1.0  ## Higher Km
+	atp_synth_rxn.initial_km = 1.0
 	atp_synthase.add_reaction(atp_synth_rxn)
-	atp_synthase.inhibitors["ATP"] = 0.4  ## Product inhibition
-	atp_synthase.activators["Pyruvate"] = 2.0  ## Activated by metabolic fuel
+	atp_synthase.inhibitors["ATP"] = 1.0  ## Product inhibition (higher Ki)
+	atp_synthase.activators["Pyruvate"] = 5.0  ## Strongly activated by metabolic fuel
 	
-	## ATPase: ATP → ADP + Pi (ATP consumption/hydrolysis)
-	var atpase = add_enzyme_object("ATPase")
-	var atp_hydro = create_reaction("ATP Hydrolysis")
-	atp_hydro.substrates["ATP"] = 1.0
-	atp_hydro.products["ADP"] = 1.0
-	atp_hydro.products["Pi"] = 1.0
-	atp_hydro.delta_g = -30.5  ## Highly favorable
-	atp_hydro.vmax = 2.0
-	atp_hydro.initial_vmax = 2.0
-	atp_hydro.km = 1.0
-	atp_hydro.initial_km = 1.0
-	atpase.add_reaction(atp_hydro)
+	### ATPase: ATP → ADP + Pi (ATP consumption/hydrolysis)
+	#var atpase = add_enzyme_object("ATPase")
+	#atpase.concentration = 0.008  ## Lower concentration
+	#var atp_hydro = create_reaction("ATP Hydrolysis")
+	#atp_hydro.substrates["ATP"] = 1.0
+	#atp_hydro.products["ADP"] = 1.0
+	#atp_hydro.products["Pi"] = 1.0
+	#atp_hydro.delta_g = -30.5  ## Highly favorable
+	#atp_hydro.vmax = 1.5  ## Lower consumption rate
+	#atp_hydro.initial_vmax = 1.5
+	#atp_hydro.km = 1.5  ## Higher Km (only active when ATP is abundant)
+	#atp_hydro.initial_km = 1.5
+	#atpase.add_reaction(atp_hydro)
 
 func simulate_step() -> void:
 	## Update enzyme concentrations (creation/degradation)

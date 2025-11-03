@@ -15,6 +15,7 @@ var enzyme_list_buttons: Dictionary = {}
 var stats_label: Label
 var pause_button: Button
 var system_energetics_label: Label
+var atp_energy_label: Label
 var molecules_panel: VBoxContainer
 var enzyme_list_container: VBoxContainer
 var enzyme_detail_container: VBoxContainer
@@ -57,37 +58,40 @@ func build_left_panel(parent: HBoxContainer) -> void:
 	left_panel.add_theme_constant_override("separation", 20)
 	parent.add_child(left_panel)
 	
-	## Title
+	## Top bar with title and time
+	var top_hbox = HBoxContainer.new()
+	left_panel.add_child(top_hbox)
+	
 	var title = Label.new()
 	title.text = "🧬 Enzyme Simulator"
 	title.add_theme_font_size_override("font_size", 32)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	left_panel.add_child(title)
-	
-	var subtitle = Label.new()
-	subtitle.text = "Thermodynamic Regulation"
-	subtitle.add_theme_font_size_override("font_size", 16)
-	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	left_panel.add_child(subtitle)
-	
-	## Stats and thermodynamic summary
-	var stats_thermo_vbox = VBoxContainer.new()
-	stats_thermo_vbox.add_theme_constant_override("separation", 10)
-	left_panel.add_child(stats_thermo_vbox)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top_hbox.add_child(title)
 	
 	stats_label = Label.new()
-	stats_label.text = "Time: 0.0s | Iteration: 0"
+	stats_label.text = "Time: 0.0s"
 	stats_label.add_theme_font_size_override("font_size", 14)
-	stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	stats_thermo_vbox.add_child(stats_label)
+	stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	stats_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top_hbox.add_child(stats_label)
 	
+	## ATP Energy Display
+	atp_energy_label = Label.new()
+	atp_energy_label.name = "ATPEnergy"
+	atp_energy_label.text = "⚡ ATP Energy: 0.0 kJ | Rate: 0.0 kJ/s"
+	atp_energy_label.add_theme_font_size_override("font_size", 15)
+	atp_energy_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+	atp_energy_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	left_panel.add_child(atp_energy_label)
+	
+	## System energetics summary
 	system_energetics_label = Label.new()
 	system_energetics_label.name = "SystemEnergetics"
 	system_energetics_label.text = "⚡ System: Forward: 0.0 | Reverse: 0.0 | Net: 0.0 mM/s"
 	system_energetics_label.add_theme_font_size_override("font_size", 13)
-	system_energetics_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.4))
+	system_energetics_label.add_theme_color_override("font_color", Color(0.8, 0.9, 1.0))
 	system_energetics_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	stats_thermo_vbox.add_child(system_energetics_label)
+	left_panel.add_child(system_energetics_label)
 	
 	## Control buttons
 	var control_hbox = HBoxContainer.new()
@@ -166,7 +170,7 @@ func build_molecule_detail_panel(parent: VBoxContainer) -> void:
 	scroll.add_child(molecule_detail_container)
 	
 	var placeholder = Label.new()
-	placeholder.text = "Click a molecule info button to view details"
+	placeholder.text = "Click a molecule to view details"
 	placeholder.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	molecule_detail_container.add_child(placeholder)
 
@@ -251,6 +255,7 @@ func build_enzyme_detail_panel(parent: HSplitContainer) -> void:
 
 func update_all() -> void:
 	update_stats()
+	update_atp_energy()
 	update_molecule_list()
 	update_enzyme_list()
 	
@@ -260,7 +265,7 @@ func update_all() -> void:
 		update_molecule_detail()
 
 func update_stats() -> void:
-	stats_label.text = "Time: %.1fs | Iteration: %d" % [simulator.total_time, simulator.iteration]
+	stats_label.text = "Time: %.1fs" % [simulator.total_time]
 	
 	## Calculate and display system energetics
 	var energetics = simulator.calculate_system_energetics()
@@ -273,6 +278,39 @@ func update_stats() -> void:
 		energetics["equilibrium_count"],
 		energetics["unfavorable_count"]
 	]
+
+func update_atp_energy() -> void:
+	## ATP hydrolysis releases ~30.5 kJ/mol
+	const ATP_ENERGY_PER_MOLE = 30.5  # kJ/mol
+	
+	if simulator.molecules.has("ATP"):
+		var atp_conc = simulator.molecules["ATP"].concentration  # mM
+		var total_atp_energy = atp_conc * ATP_ENERGY_PER_MOLE  # kJ (assuming 1L volume)
+		
+		## Calculate rate of ATP energy change
+		var atp_rate = 0.0  # mM/s
+		for enzyme in simulator.enzymes:
+			for reaction in enzyme.reactions:
+				var net_rate = reaction.current_forward_rate - reaction.current_reverse_rate
+				if reaction.products.has("ATP"):
+					atp_rate += net_rate * reaction.products["ATP"]
+				if reaction.substrates.has("ATP"):
+					atp_rate -= net_rate * reaction.substrates["ATP"]
+		
+		var energy_rate = atp_rate * ATP_ENERGY_PER_MOLE  # kJ/s
+		
+		var rate_sign = "+" if energy_rate >= 0 else ""
+		var rate_color = Color(0.4, 1.0, 0.4) if energy_rate >= 0 else Color(1.0, 0.4, 0.4)
+		
+		atp_energy_label.text = "⚡ ATP Energy: %.2f kJ | Rate: %s%.2f kJ/s" % [
+			total_atp_energy,
+			rate_sign,
+			energy_rate
+		]
+		
+		atp_energy_label.add_theme_color_override("font_color", rate_color)
+	else:
+		atp_energy_label.text = "⚡ ATP Energy: N/A"
 
 func update_molecule_list() -> void:
 	for mol_name in simulator.molecules.keys():
@@ -367,7 +405,7 @@ func update_enzyme_detail() -> void:
 							label.text = direction_text
 							label.add_theme_color_override("font_color", direction_color)
 						elif label.name == "RxnKeq":
-							var keq_text = "Keq: %s.2e" % reaction.current_keq
+							var keq_text = "Keq: %.2f" % reaction.current_keq
 							label.text = keq_text
 
 func update_molecule_detail() -> void:
@@ -399,6 +437,33 @@ func update_molecule_detail() -> void:
 			var net_color = Color(0.4, 1.0, 0.4) if net_rate >= 0 else Color(1.0, 0.4, 0.4)
 			child.text = "%s%.3f mM/s" % [net_sign, net_rate]
 			child.add_theme_color_override("font_color", net_color)
+	
+	## Update per-reaction rates
+	var reaction_index = 0
+	for enzyme in simulator.enzymes:
+		for reaction in enzyme.reactions:
+			if reaction.products.has(simulator.selected_molecule) or reaction.substrates.has(simulator.selected_molecule):
+				var panel_name = "MolReactionPanel_%d" % reaction_index
+				for child in molecule_detail_container.get_children():
+					if child.name == panel_name:
+						var vbox = child.get_child(0) if child.get_child_count() > 0 else null
+						if vbox:
+							for label in vbox.get_children():
+								if label.name == "RxnRateLabel":
+									var mol_specific_rate = 0.0
+									var reaction_net = reaction.current_forward_rate - reaction.current_reverse_rate
+									if reaction.products.has(simulator.selected_molecule):
+										var stoich = reaction.products[simulator.selected_molecule]
+										mol_specific_rate = reaction_net * stoich
+									elif reaction.substrates.has(simulator.selected_molecule):
+										var stoich = reaction.substrates[simulator.selected_molecule]
+										mol_specific_rate = -reaction_net * stoich
+									
+									var rate_sign = "+" if mol_specific_rate >= 0 else ""
+									var rate_color = Color(0.4, 1.0, 0.4) if mol_specific_rate >= 0 else Color(1.0, 0.4, 0.4)
+									label.text = "Rate: %s%.3f mM/s" % [rate_sign, mol_specific_rate]
+									label.add_theme_color_override("font_color", rate_color)
+				reaction_index += 1
 
 ## ============================================================================
 ## BUILD/REBUILD FUNCTIONS
@@ -421,19 +486,14 @@ func add_molecule_ui(mol_name: String) -> void:
 	hbox.add_theme_constant_override("separation", 10)
 	molecules_panel.add_child(hbox)
 
-	var label = Label.new()
-	label.text = "  %s: %.3f mM" % [mol_name, mol.concentration]
-	label.add_theme_font_size_override("font_size", 16)
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hbox.add_child(label)
-
-	## Info button
-	var info_btn = Button.new()
-	info_btn.text = "ℹ"
-	info_btn.custom_minimum_size = Vector2(30, 0)
-	info_btn.tooltip_text = "View molecule details"
-	info_btn.pressed.connect(func(): simulator.on_molecule_info_clicked(mol_name))
-	hbox.add_child(info_btn)
+	## Clickable label button (entire area is clickable)
+	var label_button = Button.new()
+	label_button.text = "  %s: %.3f mM" % [mol_name, mol.concentration]
+	label_button.add_theme_font_size_override("font_size", 16)
+	label_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	label_button.pressed.connect(func(): simulator.on_molecule_info_clicked(mol_name))
+	hbox.add_child(label_button)
 
 	## Delete button
 	var delete_btn = Button.new()
@@ -446,7 +506,7 @@ func add_molecule_ui(mol_name: String) -> void:
 	hbox.add_child(delete_btn)
 
 	molecule_ui_elements[mol_name] = {
-		"label": label,
+		"label": label_button,
 		"container": hbox
 	}
 
@@ -477,7 +537,7 @@ func show_enzyme_detail(enzyme: Enzyme) -> void:
 	for child in molecule_detail_container.get_children():
 		child.queue_free()
 	var placeholder = Label.new()
-	placeholder.text = "Click a molecule info button to view details"
+	placeholder.text = "Click a molecule to view details"
 	placeholder.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	molecule_detail_container.add_child(placeholder)
 	
@@ -655,7 +715,7 @@ func create_reaction_display(reaction: Reaction) -> PanelContainer:
 	## Keq
 	var keq_label = Label.new()
 	keq_label.name = "RxnKeq"
-	keq_label.text = "Keq: %s.2e" % reaction.current_keq
+	keq_label.text = "Keq: %.2f" % reaction.current_keq
 	keq_label.add_theme_font_size_override("font_size", 11)
 	vbox.add_child(keq_label)
 	
@@ -681,7 +741,7 @@ func build_molecule_detail_view(mol_name: String) -> void:
 	## Current concentration
 	var conc_label = Label.new()
 	conc_label.name = "ConcentrationLabel"
-	conc_label.text = "Concentration: %s.3f mM" % mol.concentration
+	conc_label.text = "Concentration: %.3f mM" % mol.concentration
 	conc_label.add_theme_font_size_override("font_size", 16)
 	conc_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	molecule_detail_container.add_child(conc_label)
@@ -711,23 +771,65 @@ func build_molecule_detail_view(mol_name: String) -> void:
 	net_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	molecule_detail_container.add_child(net_label)
 	
-	## List all reactions involving this molecule
+	## List all reactions involving this molecule with individual rates
 	molecule_detail_container.add_child(_create_section_label("Reactions Involving This Molecule"))
 	
 	var reaction_count = 0
 	for enzyme in simulator.enzymes:
 		for reaction in enzyme.reactions:
 			if reaction.substrates.has(mol_name) or reaction.products.has(mol_name):
-				reaction_count += 1
-				var rxn_label = Label.new()
+				var panel_button = Button.new()
+				panel_button.name = "MolReactionPanel_%d" % reaction_count
+				panel_button.custom_minimum_size = Vector2(0, 80)
+				panel_button.pressed.connect(func(): simulator.on_enzyme_selected(enzyme))
+				molecule_detail_container.add_child(panel_button)
+				
+				var vbox = VBoxContainer.new()
+				vbox.add_theme_constant_override("separation", 3)
+				vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 5)
+				vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				panel_button.add_child(vbox)
+				
 				var role = ""
 				if reaction.substrates.has(mol_name):
 					role = "Substrate"
 				elif reaction.products.has(mol_name):
 					role = "Product"
-				rxn_label.text = "• %s (%s) - %s" % [reaction.name, role, enzyme.name]
-				rxn_label.add_theme_font_size_override("font_size", 12)
-				molecule_detail_container.add_child(rxn_label)
+				
+				var rxn_name_label = Label.new()
+				rxn_name_label.text = "⚛️ %s (%s)" % [reaction.name, role]
+				rxn_name_label.add_theme_font_size_override("font_size", 13)
+				rxn_name_label.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
+				rxn_name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				vbox.add_child(rxn_name_label)
+				
+				var enzyme_label = Label.new()
+				enzyme_label.text = "Enzyme: %s" % enzyme.name
+				enzyme_label.add_theme_font_size_override("font_size", 11)
+				enzyme_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				vbox.add_child(enzyme_label)
+				
+				## Calculate this molecule's specific rate from this reaction
+				var mol_specific_rate = 0.0
+				var reaction_net = reaction.current_forward_rate - reaction.current_reverse_rate
+				if reaction.products.has(mol_name):
+					var stoich = reaction.products[mol_name]
+					mol_specific_rate = reaction_net * stoich
+				elif reaction.substrates.has(mol_name):
+					var stoich = reaction.substrates[mol_name]
+					mol_specific_rate = -reaction_net * stoich
+				
+				var rate_label = Label.new()
+				rate_label.name = "RxnRateLabel"
+				var rate_sign = "+" if mol_specific_rate >= 0 else ""
+				var rate_color = Color(0.4, 1.0, 0.4) if mol_specific_rate >= 0 else Color(1.0, 0.4, 0.4)
+				rate_label.text = "Rate: %s%.3f mM/s" % [rate_sign, mol_specific_rate]
+				rate_label.add_theme_color_override("font_color", rate_color)
+				rate_label.add_theme_font_size_override("font_size", 12)
+				rate_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				vbox.add_child(rate_label)
+				
+				reaction_count += 1
 	
 	if reaction_count == 0:
 		var no_rxn = Label.new()
