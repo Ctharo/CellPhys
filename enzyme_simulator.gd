@@ -26,8 +26,8 @@ var selected_molecule: String = ""
 var dragging_molecule: String = ""
 
 ## UI References
-var stats_label: Label
-var pause_button: Button
+@onready var stats_label: Label = %StatsLabel
+@onready var pause_button: Button = %PauseButton
 var molecules_panel: VBoxContainer
 var enzyme_list_container: VBoxContainer
 var enzyme_detail_container: VBoxContainer
@@ -41,9 +41,6 @@ func _ready() -> void:
 	print("✅ Enzyme Feedback Simulator initialized")
 
 func build_ui() -> void:
-	## Reference existing scene nodes instead of creating new ones
-	stats_label = $MarginContainer/HBoxContainer/LeftPanel/StatsLabel
-	pause_button = $MarginContainer/HBoxContainer/LeftPanel/ControlPanel/PauseButton
 	var reset_button = $MarginContainer/HBoxContainer/LeftPanel/ControlPanel/ResetButton
 	
 	## Create molecules list container
