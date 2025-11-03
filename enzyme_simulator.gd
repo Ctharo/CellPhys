@@ -7,59 +7,6 @@
 class_name EnzymeSimulator
 extends Control
 
-## Represents a chemical molecule with concentration
-class Molecule:
-	var name: String
-	var concentration: float
-	var initial_concentration: float
-
-	func _init(p_name: String, p_conc: float) -> void:
-		name = p_name
-		concentration = p_conc
-		initial_concentration = p_conc
-
-## Enzyme that catalyzes biochemical transformations
-class Enzyme:
-	var id: String
-	var name: String
-	var concentration: float
-	var initial_concentration: float
-	var vmax: float
-	var initial_vmax: float
-	var km: float
-	var initial_km: float
-
-	var substrates: Dictionary = {}     ## {"molecule_name": stoichiometry}
-	var products: Dictionary = {}       ## {"molecule_name": stoichiometry}
-	var inhibitors: Dictionary = {}     ## {"molecule_name": inhibition_factor}
-	var activators: Dictionary = {}     ## {"molecule_name": activation_factor}
-
-	## Enzyme dynamics
-	var creation_rate: float = 0.0      ## Base rate of enzyme production
-	var degradation_rate: float = 0.0   ## Base rate of enzyme degradation
-	var creation_activators: Dictionary = {}  ## {"molecule": factor}
-	var creation_inhibitors: Dictionary = {}  ## {"molecule": factor}
-	var degradation_activators: Dictionary = {}
-	var degradation_inhibitors: Dictionary = {}
-
-	var current_rate: float = 0.0
-
-	func _init(p_id: String, p_name: String) -> void:
-		id = p_id
-		name = p_name
-		concentration = 0.01
-		initial_concentration = 0.01
-		vmax = 10.0
-		initial_vmax = 10.0
-		km = 0.5
-		initial_km = 0.5
-
-	func is_source() -> bool:
-		return substrates.is_empty() and not products.is_empty()
-
-	func is_sink() -> bool:
-		return not substrates.is_empty() and products.is_empty()
-
 var molecules: Dictionary = {}
 var enzymes: Array[Enzyme] = []
 
@@ -94,166 +41,55 @@ func _ready() -> void:
 	print("✅ Enzyme Feedback Simulator initialized")
 
 func build_ui() -> void:
-	## Main layout
-	var margin = MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 10)
-	margin.add_theme_constant_override("margin_right", 10)
-	margin.add_theme_constant_override("margin_top", 10)
-	margin.add_theme_constant_override("margin_bottom", 10)
-	add_child(margin)
-
-	var hbox = HBoxContainer.new()
-	hbox.add_theme_constant_override("separation", 10)
-	margin.add_child(hbox)
-
-	## Left Panel
-	var left_panel = VBoxContainer.new()
-	left_panel.custom_minimum_size = Vector2(350, 0)
-	left_panel.add_theme_constant_override("separation", 10)
-	hbox.add_child(left_panel)
-
-	## Stats
-	stats_label = Label.new()
-	stats_label.text = "Time: 0.0s | Iteration: 0"
-	stats_label.add_theme_font_size_override("font_size", 18)
-	left_panel.add_child(stats_label)
-
-	## Control Panel
-	var control_panel = HBoxContainer.new()
-	control_panel.add_theme_constant_override("separation", 10)
-	left_panel.add_child(control_panel)
-
-	pause_button = Button.new()
-	pause_button.text = "Pause"
-	pause_button.pressed.connect(_on_pause_button_pressed)
-	control_panel.add_child(pause_button)
-
-	var reset_button = Button.new()
-	reset_button.text = "Reset"
-	reset_button.pressed.connect(_on_reset_button_pressed)
-	control_panel.add_child(reset_button)
-
-	## Molecules Panel
-	var mol_panel = PanelContainer.new()
-	mol_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	left_panel.add_child(mol_panel)
-
-	var mol_vbox = VBoxContainer.new()
-	mol_vbox.add_theme_constant_override("separation", 5)
-	mol_panel.add_child(mol_vbox)
-
-	var mol_header = HBoxContainer.new()
-	mol_vbox.add_child(mol_header)
-
-	var mol_title = Label.new()
-	mol_title.text = "Molecules"
-	mol_title.add_theme_font_size_override("font_size", 18)
-	mol_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	mol_header.add_child(mol_title)
-
-	var add_mol_btn = Button.new()
-	add_mol_btn.text = "+ Add"
-	add_mol_btn.pressed.connect(_on_add_molecule_pressed)
-	mol_header.add_child(add_mol_btn)
-
+	## Reference existing scene nodes instead of creating new ones
+	stats_label = $MarginContainer/HBoxContainer/LeftPanel/StatsLabel
+	pause_button = $MarginContainer/HBoxContainer/LeftPanel/ControlPanel/PauseButton
+	var reset_button = $MarginContainer/HBoxContainer/LeftPanel/ControlPanel/ResetButton
+	
+	## Create molecules list container
+	var mol_vbox = $MarginContainer/HBoxContainer/LeftPanel/MoleculesPanel/VBox
 	var mol_scroll = ScrollContainer.new()
 	mol_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	mol_vbox.add_child(mol_scroll)
-
+	
 	molecules_panel = VBoxContainer.new()
 	molecules_panel.add_theme_constant_override("separation", 5)
 	molecules_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	mol_scroll.add_child(molecules_panel)
-
-	## Molecule Detail Panel
+	
+	## Create molecule detail panel
+	var left_panel = $MarginContainer/HBoxContainer/LeftPanel
 	var mol_detail_panel = PanelContainer.new()
 	mol_detail_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	left_panel.add_child(mol_detail_panel)
-
+	
 	var mol_detail_vbox = VBoxContainer.new()
 	mol_detail_panel.add_child(mol_detail_vbox)
-
+	
 	var mol_detail_title = Label.new()
 	mol_detail_title.text = "Molecule Details"
 	mol_detail_title.add_theme_font_size_override("font_size", 18)
 	mol_detail_vbox.add_child(mol_detail_title)
-
+	
 	var mol_detail_scroll = ScrollContainer.new()
 	mol_detail_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	mol_detail_vbox.add_child(mol_detail_scroll)
-
+	
 	molecule_detail_container = VBoxContainer.new()
 	molecule_detail_container.add_theme_constant_override("separation", 10)
 	molecule_detail_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	mol_detail_scroll.add_child(molecule_detail_container)
-
+	
 	var mol_placeholder = Label.new()
 	mol_placeholder.text = "Click a molecule info button to view details"
 	mol_placeholder.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	molecule_detail_container.add_child(mol_placeholder)
-
-	## Right Panel
-	var right_panel = HSplitContainer.new()
-	right_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hbox.add_child(right_panel)
-
-	## Enzyme List Panel
-	var enzyme_list_panel = PanelContainer.new()
-	enzyme_list_panel.custom_minimum_size = Vector2(200, 0)
-	right_panel.add_child(enzyme_list_panel)
-
-	var enz_list_vbox = VBoxContainer.new()
-	enzyme_list_panel.add_child(enz_list_vbox)
-
-	var enz_list_header = HBoxContainer.new()
-	enz_list_vbox.add_child(enz_list_header)
-
-	var enz_list_title = Label.new()
-	enz_list_title.text = "Enzymes"
-	enz_list_title.add_theme_font_size_override("font_size", 18)
-	enz_list_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	enz_list_header.add_child(enz_list_title)
-
-	var add_enz_btn = Button.new()
-	add_enz_btn.text = "+ Add"
-	add_enz_btn.pressed.connect(_on_add_enzyme_pressed)
-	enz_list_header.add_child(add_enz_btn)
-
-	var enz_list_scroll = ScrollContainer.new()
-	enz_list_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	enz_list_vbox.add_child(enz_list_scroll)
-
-	enzyme_list_container = VBoxContainer.new()
-	enzyme_list_container.add_theme_constant_override("separation", 5)
-	enzyme_list_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	enz_list_scroll.add_child(enzyme_list_container)
-
-	## Enzyme Detail Panel
-	var enzyme_detail_panel = PanelContainer.new()
-	right_panel.add_child(enzyme_detail_panel)
-
-	var enz_detail_vbox = VBoxContainer.new()
-	enzyme_detail_panel.add_child(enz_detail_vbox)
-
-	var enz_detail_title = Label.new()
-	enz_detail_title.text = "Enzyme Details"
-	enz_detail_title.add_theme_font_size_override("font_size", 18)
-	enz_detail_vbox.add_child(enz_detail_title)
-
-	var enz_detail_scroll = ScrollContainer.new()
-	enz_detail_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	enz_detail_vbox.add_child(enz_detail_scroll)
-
-	enzyme_detail_container = VBoxContainer.new()
-	enzyme_detail_container.add_theme_constant_override("separation", 10)
-	enzyme_detail_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	enz_detail_scroll.add_child(enzyme_detail_container)
-
-	var enz_placeholder = Label.new()
-	enz_placeholder.text = "Select an enzyme to view details"
-	enz_placeholder.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	enzyme_detail_container.add_child(enz_placeholder)
+	
+	## Reference enzyme list container
+	enzyme_list_container = $MarginContainer/HBoxContainer/RightPanel/HSplitContainer/EnzymeListPanel/VBox/ScrollContainer/EnzymeList
+	
+	## Reference enzyme detail container
+	enzyme_detail_container = $MarginContainer/HBoxContainer/RightPanel/HSplitContainer/EnzymeDetailPanel/ScrollContainer/EnzymeDetail
 
 func _process(delta: float) -> void:
 	if is_paused:
@@ -275,37 +111,59 @@ func initialize_molecules() -> void:
 
 ## Initialize starting enzymes
 func initialize_enzymes() -> void:
-	## Source: produces A
-	var source = add_enzyme_object("Source A")
-	source.products["A"] = 1.0
-	source.vmax = 2.0
-	source.initial_vmax = 2.0
+	## Source 1: ADP_precursor
+	var source_adp = add_enzyme_object("ADP Precursor Synthase")
+	source_adp.products["ADP_precursor"] = 1.0
+	source_adp.vmax = 3.0
+	source_adp.initial_vmax = 3.0
+	source_adp.km = 0.5
+	source_adp.initial_km = 0.5
+	
+	## Source 2: Pi_precursor
+	var source_pi = add_enzyme_object("Phosphate Precursor Synthase")
+	source_pi.products["Pi_precursor"] = 1.0
+	source_pi.vmax = 3.0
+	source_pi.initial_vmax = 3.0
+	source_pi.km = 0.5
+	source_pi.initial_km = 0.5
+	
+	## Enzyme 3: ADP_precursor → ADP
+	var adp_synthase = add_enzyme_object("ADP Synthase")
+	adp_synthase.substrates["ADP_precursor"] = 1.0
+	adp_synthase.products["ADP"] = 1.0
+	adp_synthase.vmax = 3.0
+	adp_synthase.initial_vmax = 3.0
+	adp_synthase.km = 0.5
+	adp_synthase.initial_km = 0.5
 
-	## Enzyme 1: A → B (inhibited by C)
-	var e1 = add_enzyme_object("Enzyme 1")
-	e1.substrates["A"] = 1.0
-	e1.products["B"] = 1.0
-	e1.inhibitors["C"] = 0.3
-	e1.vmax = 8.0
-	e1.initial_vmax = 8.0
-	e1.km = 0.5
-	e1.initial_km = 0.5
+	## Enzyme 4: Pi_precursor → Phosphate
+	var pi_synthase = add_enzyme_object("Phosphate Synthase")
+	pi_synthase.substrates["Pi_precursor"] = 1.0
+	pi_synthase.products["Phosphate"] = 1.0
+	pi_synthase.vmax = 3.0
+	pi_synthase.initial_vmax = 3.0
+	pi_synthase.km = 0.5
+	pi_synthase.initial_km = 0.5
 
-	## Enzyme 2: B → C
-	var e2 = add_enzyme_object("Enzyme 2")
-	e2.substrates["B"] = 1.0
-	e2.products["C"] = 1.0
-	e2.vmax = 6.0
-	e2.initial_vmax = 6.0
-	e2.km = 0.3
-	e2.initial_km = 0.3
+	## ATP Synthase: ADP + Phosphate → ATP (inhibited by ATP - product inhibition)
+	var atp_synthase = add_enzyme_object("ATP Synthase")
+	atp_synthase.substrates["ADP"] = 1.0
+	atp_synthase.substrates["Phosphate"] = 1.0
+	atp_synthase.products["ATP"] = 1.0
+	atp_synthase.inhibitors["ATP"] = 0.4  ## Product inhibition
+	atp_synthase.vmax = 5.0
+	atp_synthase.initial_vmax = 5.0
+	atp_synthase.km = 0.3
+	atp_synthase.initial_km = 0.3
 
-	## Sink: consumes C
-	var sink = add_enzyme_object("Sink C")
-	sink.substrates["C"] = 1.0
-	sink.vmax = 1.5
-	sink.initial_vmax = 1.5
-
+	## ATPase: ATP → ADP + Phosphate (reverse reaction/ATP consumption)
+	var atpase = add_enzyme_object("ATPase")
+	atpase.substrates["ATP"] = 1.0
+	atpase.vmax = 10.0
+	atpase.initial_vmax = 20.0
+	atpase.km = 4
+	atpase.initial_km = 4
+	
 ## Main simulation step
 func simulate_step() -> void:
 	## Update enzyme concentrations (creation/degradation)
@@ -820,8 +678,8 @@ func stop_molecule_drag() -> void:
 
 ## Add enzyme
 func _on_add_enzyme_pressed() -> void:
-	var name = "Enzyme %d" % (enzyme_count + 1)
-	add_enzyme_object(name)
+	var n = "Enzyme %d" % (enzyme_count + 1)
+	add_enzyme_object(n)
 
 func add_enzyme_object(enzyme_name: String) -> Enzyme:
 	enzyme_count += 1
