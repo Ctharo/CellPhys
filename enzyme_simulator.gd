@@ -7,14 +7,17 @@ extends Control
 ## Simulation state
 var molecules: Dictionary = {}
 var enzymes: Array[Enzyme] = []
+var reactions: Array[Reaction] = []  ## All reactions across all enzymes
 var timestep: float = 0.1
 var total_time: float = 0.0
 var iteration: int = 0
 var is_paused: bool = false
 var enzyme_count: int = 0
+var reaction_count: int = 0
 
 ## UI state
 var selected_enzyme: Enzyme = null
+var selected_reaction: Reaction = null
 var selected_molecule: String = ""
 var dragging_molecule: String = ""
 
@@ -55,87 +58,99 @@ func _process(delta: float) -> void:
 ## ============================================================================
 
 func initialize_molecules() -> void:
-	add_molecule("ADP_precursor", 5.0)
-	add_molecule("Pi_precursor", 5.0)
-	add_molecule("ADP", 0.1)
-	add_molecule("Phosphate", 0.1)
+	add_molecule("ADP", 2.0)
+	add_molecule("Pi", 2.0)  ## Inorganic phosphate
 	add_molecule("ATP", 0.05)
+	add_molecule("Glucose", 5.0)
+	add_molecule("G6P", 0.1)  ## Glucose-6-phosphate
+	add_molecule("Pyruvate", 0.1)
 
 func initialize_enzymes() -> void:
-	## Source 1: ADP_precursor synthase
-	var source_adp = add_enzyme_object("ADP Precursor Synthase")
-	source_adp.products["ADP_precursor"] = 1.0
-	source_adp.kcat_forward = 3.0
-	source_adp.km_substrates = {}
-	source_adp.delta_g_standard = -10.0
+	## Glucose source (represents external glucose supply)
+	var glucose_source = add_enzyme_object("Glucose Transporter")
+	var gluc_import = create_reaction("Glucose Import")
+	gluc_import.products["Glucose"] = 1.0
+	gluc_import.delta_g = -5.0  ## Slightly favorable
+	gluc_import.vmax = 2.0
+	gluc_import.initial_vmax = 2.0
+	gluc_import.km = 0.3
+	gluc_import.initial_km = 0.3
+	glucose_source.add_reaction(gluc_import)
 	
-	## Source 2: Pi_precursor synthase
-	var source_pi = add_enzyme_object("Phosphate Precursor Synthase")
-	source_pi.products["Pi_precursor"] = 1.0
-	source_pi.kcat_forward = 3.0
-	source_pi.delta_g_standard = -10.0
+	## Hexokinase: Glucose + ATP → G6P + ADP (consumes ATP)
+	var hexokinase = add_enzyme_object("Hexokinase")
+	var hex_rxn = create_reaction("Glucose Phosphorylation")
+	hex_rxn.substrates["Glucose"] = 1.0
+	hex_rxn.substrates["ATP"] = 1.0
+	hex_rxn.products["G6P"] = 1.0
+	hex_rxn.products["ADP"] = 1.0
+	hex_rxn.delta_g = -16.7  ## Highly favorable, ATP hydrolysis
+	hex_rxn.vmax = 3.0
+	hex_rxn.initial_vmax = 3.0
+	hex_rxn.km = 0.1
+	hex_rxn.initial_km = 0.1
+	hexokinase.add_reaction(hex_rxn)
+	hexokinase.inhibitors["G6P"] = 0.3  ## Product inhibition
 	
-	## Enzyme 3: ADP_precursor → ADP
-	var adp_synthase = add_enzyme_object("ADP Synthase")
-	adp_synthase.substrates["ADP_precursor"] = 1.0
-	adp_synthase.products["ADP"] = 1.0
-	adp_synthase.kcat_forward = 3.0
-	adp_synthase.kcat_reverse = 0.3
-	adp_synthase.km_substrates["ADP_precursor"] = 0.5
-	adp_synthase.delta_g_standard = -8.0
-
-	## Enzyme 4: Pi_precursor → Phosphate
-	var pi_synthase = add_enzyme_object("Phosphate Synthase")
-	pi_synthase.substrates["Pi_precursor"] = 1.0
-	pi_synthase.products["Phosphate"] = 1.0
-	pi_synthase.kcat_forward = 3.0
-	pi_synthase.kcat_reverse = 0.3
-	pi_synthase.km_substrates["Pi_precursor"] = 0.5
-	pi_synthase.delta_g_standard = -8.0
-
-	## ATP Synthase: ADP + Phosphate → ATP (with product inhibition)
+	## Glycolytic enzyme: G6P → Pyruvate + ATP (net ATP production)
+	## Simplified representation of glycolysis
+	var glycolysis = add_enzyme_object("Glycolysis Enzymes")
+	var glyc_rxn = create_reaction("Glycolysis")
+	glyc_rxn.substrates["G6P"] = 1.0
+	glyc_rxn.substrates["ADP"] = 2.0
+	glyc_rxn.substrates["Pi"] = 2.0
+	glyc_rxn.products["Pyruvate"] = 2.0
+	glyc_rxn.products["ATP"] = 2.0
+	glyc_rxn.delta_g = -85.0  ## Very favorable overall
+	glyc_rxn.vmax = 1.5
+	glyc_rxn.initial_vmax = 1.5
+	glyc_rxn.km = 0.2
+	glyc_rxn.initial_km = 0.2
+	glycolysis.add_reaction(glyc_rxn)
+	
+	## ATP Synthase (represents oxidative phosphorylation)
+	## ADP + Pi → ATP (powered by proton gradient in reality)
 	var atp_synthase = add_enzyme_object("ATP Synthase")
-	atp_synthase.substrates["ADP"] = 1.0
-	atp_synthase.substrates["Phosphate"] = 1.0
-	atp_synthase.products["ATP"] = 1.0
-	atp_synthase.kcat_forward = 5.0
-	atp_synthase.kcat_reverse = 0.5
-	atp_synthase.km_substrates["ADP"] = 0.3
-	atp_synthase.km_substrates["Phosphate"] = 0.3
-	atp_synthase.km_products["ATP"] = 0.5
-	atp_synthase.delta_g_standard = 30.5  # Unfavorable, driven by concentrations!
+	var atp_synth_rxn = create_reaction("ATP Synthesis")
+	atp_synth_rxn.substrates["ADP"] = 1.0
+	atp_synth_rxn.substrates["Pi"] = 1.0
+	atp_synth_rxn.products["ATP"] = 1.0
+	atp_synth_rxn.delta_g = 30.5  ## Unfavorable, requires energy input
+	atp_synth_rxn.vmax = 4.0
+	atp_synth_rxn.initial_vmax = 4.0
+	atp_synth_rxn.km = 0.5
+	atp_synth_rxn.initial_km = 0.5
+	atp_synthase.add_reaction(atp_synth_rxn)
+	atp_synthase.inhibitors["ATP"] = 0.4  ## Product inhibition
+	atp_synthase.activators["Pyruvate"] = 2.0  ## Activated by metabolic fuel
 	
-	## Allosteric product inhibition by ATP
-	atp_synthase.allosteric_inhibitors["ATP"] = {
-		"kd": 2.0,
-		"fold": 0.3
-	}
-
-	## ATPase: ATP → ADP + Phosphate (reverse reaction/ATP consumption)
+	## ATPase: ATP → ADP + Pi (ATP consumption/hydrolysis)
 	var atpase = add_enzyme_object("ATPase")
-	atpase.substrates["ATP"] = 1.0
-	atpase.products["ADP"] = 1.0
-	atpase.products["Phosphate"] = 1.0
-	atpase.kcat_forward = 10.0
-	atpase.kcat_reverse = 1.0
-	atpase.km_substrates["ATP"] = 4.0
-	atpase.delta_g_standard = -30.5  # Very favorable
+	var atp_hydro = create_reaction("ATP Hydrolysis")
+	atp_hydro.substrates["ATP"] = 1.0
+	atp_hydro.products["ADP"] = 1.0
+	atp_hydro.products["Pi"] = 1.0
+	atp_hydro.delta_g = -30.5  ## Highly favorable
+	atp_hydro.vmax = 2.0
+	atp_hydro.initial_vmax = 2.0
+	atp_hydro.km = 1.0
+	atp_hydro.initial_km = 1.0
+	atpase.add_reaction(atp_hydro)
 
 func simulate_step() -> void:
 	## Update enzyme concentrations (creation/degradation)
 	for enzyme in enzymes:
 		enzyme.update_enzyme_concentration(molecules, timestep)
 
-	## Calculate forward and reverse rates
+	## Calculate forward and reverse rates for all reactions
 	for enzyme in enzymes:
-		enzyme.current_forward_rate = enzyme.calculate_forward_rate(molecules)
-		enzyme.current_reverse_rate = enzyme.calculate_reverse_rate(molecules)
-		enzyme.current_delta_g = enzyme.calculate_actual_delta_g(molecules)
+		enzyme.update_reaction_rates(molecules)
 
 	## Apply net reactions
 	for enzyme in enzymes:
-		var net_rate = enzyme.current_forward_rate - enzyme.current_reverse_rate
-		apply_catalysis(enzyme, net_rate)
+		for reaction in enzyme.reactions:
+			var net_rate = reaction.current_forward_rate - reaction.current_reverse_rate
+			apply_reaction(reaction, net_rate)
 
 	## Prevent negative concentrations
 	for mol in molecules.values():
@@ -143,19 +158,19 @@ func simulate_step() -> void:
 	for enzyme in enzymes:
 		enzyme.concentration = max(enzyme.concentration, 0.0)
 
-func apply_catalysis(enzyme: Enzyme, net_rate: float) -> void:
+func apply_reaction(reaction: Reaction, net_rate: float) -> void:
 	var rate = net_rate * timestep
 
 	## Consume substrates with stoichiometry
-	for substrate in enzyme.substrates:
+	for substrate in reaction.substrates:
 		if molecules.has(substrate):
-			var stoich = enzyme.substrates[substrate]
+			var stoich = reaction.substrates[substrate]
 			molecules[substrate].concentration -= rate * stoich
 
 	## Produce products with stoichiometry
-	for product in enzyme.products:
+	for product in reaction.products:
 		if molecules.has(product):
-			var stoich = enzyme.products[product]
+			var stoich = reaction.products[product]
 			molecules[product].concentration += rate * stoich
 
 ## ============================================================================
@@ -170,16 +185,14 @@ func remove_molecule(mol_name: String) -> bool:
 	if not molecules.has(mol_name):
 		return false
 
-	## Check if molecule is used by any enzyme
+	## Check if molecule is used by any reaction
 	for enzyme in enzymes:
-		if enzyme.substrates.has(mol_name) or enzyme.products.has(mol_name):
-			print("⚠️ Cannot remove '%s': used by enzyme '%s'" % [mol_name, enzyme.name])
-			return false
-		if enzyme.competitive_inhibitors.has(mol_name):
-			print("⚠️ Cannot remove '%s': used as competitive inhibitor by '%s'" % [mol_name, enzyme.name])
-			return false
-		if enzyme.allosteric_inhibitors.has(mol_name) or enzyme.allosteric_activators.has(mol_name):
-			print("⚠️ Cannot remove '%s': used as allosteric regulator by '%s'" % [mol_name, enzyme.name])
+		for reaction in enzyme.reactions:
+			if reaction.substrates.has(mol_name) or reaction.products.has(mol_name):
+				print("⚠️ Cannot remove '%s': used by reaction '%s'" % [mol_name, reaction.name])
+				return false
+		if enzyme.inhibitors.has(mol_name) or enzyme.activators.has(mol_name):
+			print("⚠️ Cannot remove '%s': used as regulator by '%s'" % [mol_name, enzyme.name])
 			return false
 
 	molecules.erase(mol_name)
@@ -195,63 +208,59 @@ func add_enzyme_object(enzyme_name: String) -> Enzyme:
 	print("✅ Added enzyme: %s" % enzyme_name)
 	return enzyme
 
+func create_reaction(reaction_name: String) -> Reaction:
+	reaction_count += 1
+	var reaction_id = "r" + str(reaction_count)
+	var reaction = Reaction.new(reaction_id, reaction_name)
+	reaction.temperature = TEMPERATURE
+	reactions.append(reaction)
+	print("✅ Created reaction: %s" % reaction_name)
+	return reaction
+
 func remove_enzyme(enzyme: Enzyme) -> void:
+	## Remove all reactions associated with this enzyme
+	for reaction in enzyme.reactions:
+		reactions.erase(reaction)
+	
 	enzymes.erase(enzyme)
 	if selected_enzyme == enzyme:
 		selected_enzyme = null
 	print("✅ Removed enzyme: %s" % enzyme.name)
 
-func add_molecule_to_enzyme(enzyme: Enzyme, mol_name: String, slot_type: String) -> void:
-	match slot_type:
-		"substrate":
-			if not enzyme.substrates.has(mol_name):
-				enzyme.substrates[mol_name] = 1.0
-				if not enzyme.km_substrates.has(mol_name):
-					enzyme.km_substrates[mol_name] = 0.5
-		"product":
-			if not enzyme.products.has(mol_name):
-				enzyme.products[mol_name] = 1.0
-				if not enzyme.km_products.has(mol_name):
-					enzyme.km_products[mol_name] = 0.5
-		"competitive_inhibitor":
-			if not enzyme.competitive_inhibitors.has(mol_name):
-				enzyme.competitive_inhibitors[mol_name] = 0.5  # Ki
-		"noncompetitive_inhibitor":
-			if not enzyme.noncompetitive_inhibitors.has(mol_name):
-				enzyme.noncompetitive_inhibitors[mol_name] = 0.5  # Ki
-		"allosteric_inhibitor":
-			if not enzyme.allosteric_inhibitors.has(mol_name):
-				enzyme.allosteric_inhibitors[mol_name] = {"kd": 0.5, "fold": 0.3}
-		"allosteric_activator":
-			if not enzyme.allosteric_activators.has(mol_name):
-				enzyme.allosteric_activators[mol_name] = {"kd": 0.5, "fold": 2.0}
-		"creation_regulator":
-			if not enzyme.creation_regulators.has(mol_name):
-				enzyme.creation_regulators[mol_name] = {"type": "activator", "kd": 0.5, "max_effect": 0.01}
-		"degradation_regulator":
-			if not enzyme.degradation_regulators.has(mol_name):
-				enzyme.degradation_regulators[mol_name] = {"type": "activator", "kd": 0.5, "max_effect": 0.01}
-	print("✅ Added %s '%s' to %s" % [slot_type, mol_name, enzyme.name])
-
-func remove_molecule_from_enzyme(enzyme: Enzyme, mol_name: String, slot_type: String) -> void:
-	match slot_type:
-		"substrate":
-			enzyme.substrates.erase(mol_name)
-		"product":
-			enzyme.products.erase(mol_name)
-		"competitive_inhibitor":
-			enzyme.competitive_inhibitors.erase(mol_name)
-		"noncompetitive_inhibitor":
-			enzyme.noncompetitive_inhibitors.erase(mol_name)
-		"allosteric_inhibitor":
-			enzyme.allosteric_inhibitors.erase(mol_name)
-		"allosteric_activator":
-			enzyme.allosteric_activators.erase(mol_name)
-		"creation_regulator":
-			enzyme.creation_regulators.erase(mol_name)
-		"degradation_regulator":
-			enzyme.degradation_regulators.erase(mol_name)
-	print("✅ Removed %s '%s' from %s" % [slot_type, mol_name, enzyme.name])
+## Calculate system-wide thermodynamics
+func calculate_system_energetics() -> Dictionary:
+	var total_forward_rate = 0.0
+	var total_reverse_rate = 0.0
+	var total_net_rate = 0.0
+	var sum_delta_g = 0.0
+	var favorable_count = 0
+	var unfavorable_count = 0
+	var equilibrium_count = 0
+	
+	for enzyme in enzymes:
+		total_forward_rate += enzyme.current_total_forward_rate
+		total_reverse_rate += enzyme.current_total_reverse_rate
+		total_net_rate += enzyme.current_net_rate
+		
+		for reaction in enzyme.reactions:
+			sum_delta_g += reaction.current_delta_g_actual
+			
+			if reaction.current_delta_g_actual < -5.0:
+				favorable_count += 1
+			elif reaction.current_delta_g_actual > 5.0:
+				unfavorable_count += 1
+			else:
+				equilibrium_count += 1
+	
+	return {
+		"total_forward_rate": total_forward_rate,
+		"total_reverse_rate": total_reverse_rate,
+		"total_net_rate": total_net_rate,
+		"sum_delta_g": sum_delta_g,
+		"favorable_count": favorable_count,
+		"unfavorable_count": unfavorable_count,
+		"equilibrium_count": equilibrium_count
+	}
 
 ## ============================================================================
 ## BUTTON CALLBACKS (Minimal logic, delegates to UI manager)
@@ -268,6 +277,11 @@ func _on_reset_button_pressed() -> void:
 	## Reset all enzymes to initial values
 	for enzyme in enzymes:
 		enzyme.concentration = enzyme.initial_concentration
+
+	## Reset all reactions
+	for reaction in reactions:
+		reaction.vmax = reaction.initial_vmax
+		reaction.km = reaction.initial_km
 
 	total_time = 0.0
 	iteration = 0

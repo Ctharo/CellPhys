@@ -4,25 +4,26 @@ extends RefCounted
 
 var id: String
 var name: String = ""
+var enzyme: Enzyme = null  ## Reference to parent enzyme
 
 ## Stoichiometry
 var substrates: Dictionary = {}  ## {"molecule_name": stoichiometry}
 var products: Dictionary = {}    ## {"molecule_name": stoichiometry}
 
-## Kinetic parameters (specific to this reaction)
-var kcat_forward: float = 10.0   ## Forward catalytic rate constant (s⁻¹)
-var kcat_reverse: float = 1.0    ## Reverse catalytic rate constant (s⁻¹)
-var km_substrates: Dictionary = {} ## {"molecule": Km value in mM}
-var km_products: Dictionary = {}   ## {"molecule": Km value in mM}
+## Kinetic parameters
+var vmax: float = 10.0           ## Maximum velocity (mM/s)
+var initial_vmax: float = 10.0   ## Initial vmax for reset
+var km: float = 0.5              ## Michaelis constant (mM)
+var initial_km: float = 0.5      ## Initial Km for reset
 
-## Thermodynamic parameters (specific to this reaction)
-var delta_g_standard: float = -5.0  ## ΔG° in kJ/mol
-var temperature: float = 310.0      ## Temperature in Kelvin (37°C)
+## Thermodynamic parameters
+var delta_g: float = -5.0        ## ΔG° in kJ/mol (standard free energy change)
+var temperature: float = 310.0   ## Temperature in Kelvin (37°C)
 
 ## Runtime state
 var current_forward_rate: float = 0.0
 var current_reverse_rate: float = 0.0
-var current_delta_g: float = 0.0
+var current_delta_g_actual: float = 0.0
 var current_keq: float = 0.0
 
 const R: float = 8.314e-3  ## Gas constant in kJ/(mol·K)
@@ -39,16 +40,19 @@ func is_sink() -> bool:
 
 ## Calculate equilibrium constant from standard free energy
 func calculate_keq() -> float:
-	return exp(-delta_g_standard / (R * temperature))
+	current_keq = exp(-delta_g / (R * temperature))
+	return current_keq
 
-## Calculate actual ΔG based on current concentrations
+## Calculate actual ΔG based on current concentrations (reaction quotient Q)
 func calculate_actual_delta_g(molecules: Dictionary) -> float:
-	current_keq = calculate_keq()
+	calculate_keq()
 	
+	## Source/sink reactions use standard ΔG
 	if is_source() or is_sink():
-		current_delta_g = delta_g_standard
-		return current_delta_g
+		current_delta_g_actual = delta_g
+		return current_delta_g_actual
 	
+	## Calculate reaction quotient Q = [products]/[substrates]
 	var q: float = 1.0
 	
 	## Products in numerator
@@ -65,77 +69,99 @@ func calculate_actual_delta_g(molecules: Dictionary) -> float:
 			var stoich = substrates[substrate]
 			q /= pow(conc, stoich)
 	
-	current_delta_g = delta_g_standard + R * temperature * log(q)
-	return current_delta_g
+	## ΔG = ΔG° + RT ln(Q)
+	current_delta_g_actual = delta_g + R * temperature * log(q)
+	return current_delta_g_actual
 
-## Calculate forward rate with all regulation
-func calculate_forward_rate(molecules: Dictionary) -> float:
-	if concentration <= 0.0:
+## Calculate forward rate (substrates → products)
+func calculate_forward_rate(molecules: Dictionary, enzyme_conc: float) -> float:
+	if enzyme_conc <= 0.0:
 		return 0.0
 	
-	# Sources produce regardless of thermodynamics
+	## Sources produce at constant rate regardless of thermodynamics
 	if is_source():
-		var vmax = kcat_forward * concentration
-		vmax = apply_allosteric_regulation(vmax, molecules)
-		return vmax
+		current_forward_rate = vmax * enzyme_conc
+		return current_forward_rate
 	
-	# Check thermodynamics - can't proceed if ΔG > 0 significantly
-	var delta_g = calculate_actual_delta_g(molecules)
-	if delta_g > 5.0:  # Too unfavorable (> 5 kJ/mol)
+	## Calculate thermodynamics
+	var dg_actual = calculate_actual_delta_g(molecules)
+	
+	## Thermodynamic constraint: can't go forward if too unfavorable
+	if dg_actual > 10.0:
+		current_forward_rate = 0.0
 		return 0.0
 	
-	# Base Vmax
-	var vmax = kcat_forward * concentration
-	
-	# Apply allosteric regulation
-	vmax = apply_allosteric_regulation(vmax, molecules)
-	
-	# Apply non-competitive inhibition
-	vmax = apply_noncompetitive_inhibition(vmax, molecules)
-	
-	# Calculate apparent Km with competitive inhibition
-	var km_app = calculate_apparent_km(molecules)
-	
-	# Michaelis-Menten kinetics with limiting substrate
+	## Michaelis-Menten kinetics with limiting substrate
+	var rate = vmax * enzyme_conc
 	var min_saturation = 1.0
+	
 	for substrate in substrates:
 		if not molecules.has(substrate):
+			current_forward_rate = 0.0
 			return 0.0
+		
 		var substrate_conc = molecules[substrate].concentration
-		var km = km_substrates.get(substrate, 0.5)
-		var saturation = substrate_conc / (km_app * km + substrate_conc)
+		if substrate_conc <= 0.0:
+			current_forward_rate = 0.0
+			return 0.0
+		
+		var saturation = substrate_conc / (km + substrate_conc)
 		min_saturation = min(min_saturation, saturation)
 	
-	return vmax * min_saturation
+	rate *= min_saturation
+	
+	## Apply thermodynamic damping for slightly unfavorable reactions
+	if dg_actual > 0.0:
+		var damping = exp(-dg_actual / (R * temperature))
+		rate *= damping
+	
+	current_forward_rate = rate
+	return current_forward_rate
 
 ## Calculate reverse rate (products → substrates)
-func calculate_reverse_rate(molecules: Dictionary) -> float:
-	if concentration <= 0.0 or is_source() or is_sink():
+func calculate_reverse_rate(molecules: Dictionary, enzyme_conc: float) -> float:
+	if enzyme_conc <= 0.0 or is_source() or is_sink():
+		current_reverse_rate = 0.0
 		return 0.0
 	
-	# Check thermodynamics for reverse reaction
-	var delta_g = calculate_actual_delta_g(molecules)
-	if delta_g < -5.0:  # Too unfavorable for reverse
+	## Calculate thermodynamics
+	var dg_actual = calculate_actual_delta_g(molecules)
+	
+	## Thermodynamic constraint: can't go reverse if too favorable forward
+	if dg_actual < -10.0:
+		current_reverse_rate = 0.0
 		return 0.0
 	
-	# Base reverse Vmax
-	var vmax_rev = kcat_reverse * concentration
+	## Reverse Vmax is related to forward Vmax by equilibrium constant
+	## Vmax_rev = Vmax_fwd / Keq (Haldane relationship)
+	var vmax_reverse = vmax / max(current_keq, 0.01)
 	
-	# Apply allosteric regulation (affects both directions)
-	vmax_rev = apply_allosteric_regulation(vmax_rev, molecules)
-	
-	# Michaelis-Menten for products as "substrates"
+	## Michaelis-Menten for products as "substrates"
+	var rate = vmax_reverse * enzyme_conc
 	var min_saturation = 1.0
+	
 	for product in products:
 		if not molecules.has(product):
+			current_reverse_rate = 0.0
 			return 0.0
+		
 		var product_conc = molecules[product].concentration
-		var km = km_products.get(product, 0.5)
+		if product_conc <= 0.0:
+			current_reverse_rate = 0.0
+			return 0.0
+		
 		var saturation = product_conc / (km + product_conc)
 		min_saturation = min(min_saturation, saturation)
 	
-	return vmax_rev * min_saturation
-
+	rate *= min_saturation
+	
+	## Apply thermodynamic damping for slightly unfavorable reverse reactions
+	if dg_actual < 0.0:
+		var damping = exp(dg_actual / (R * temperature))
+		rate *= damping
+	
+	current_reverse_rate = rate
+	return current_reverse_rate
 
 ## Get a readable summary of this reaction
 func get_summary() -> String:
@@ -162,4 +188,4 @@ func get_summary() -> String:
 	if product_str == "":
 		product_str = "∅"
 	
-	return "%s → %s" % [substrate_str, product_str]
+	return "%s ⇄ %s" % [substrate_str, product_str]
