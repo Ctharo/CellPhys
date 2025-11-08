@@ -19,6 +19,7 @@ var initial_km: float = 0.5      ## Initial Km for reset
 ## Thermodynamic parameters
 var delta_g: float = -5.0        ## ΔG° in kJ/mol (standard free energy change)
 var temperature: float = 310.0   ## Temperature in Kelvin (37°C)
+var efficiency: float = 1.0      ## Determines amount of energy that can be used for useful work (i.e. to power reactions) vs lost into cell heat
 
 ## Reaction constraints
 var is_irreversible: bool = false  ## If true, reaction cannot go in reverse
