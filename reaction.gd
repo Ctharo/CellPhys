@@ -21,6 +21,15 @@ var delta_g: float = -5.0        ## ΔG° in kJ/mol (standard free energy change
 var temperature: float = 310.0   ## Temperature in Kelvin (37°C)
 var efficiency: float = 1.0      ## Determines amount of energy that can be used for useful work (i.e. to power reactions) vs lost into cell heat
 
+## Energy partitioning
+var energy_efficiency: float = 0.7  # 70% → useful work, 30% → heat
+var coupled_work: float = 0.0  # Energy used to drive other reactions
+
+## Runtime energy tracking
+var current_energy_released: float = 0.0  # kJ/s
+var current_useful_work: float = 0.0  # kJ/s  
+var current_heat_generated: float = 0.0  # kJ/s
+
 ## Reaction constraints
 var is_irreversible: bool = false  ## If true, reaction cannot go in reverse
 
@@ -41,6 +50,19 @@ func is_source() -> bool:
 
 func is_sink() -> bool:
 	return not substrates.is_empty() and products.is_empty()
+
+## Calculate how much energy goes to work vs heat
+func calculate_energy_partition(net_rate: float) -> void:
+	## For exergonic reactions (ΔG < 0)
+	if current_delta_g_actual < 0:
+		current_energy_released = -current_delta_g_actual * net_rate
+		current_useful_work = current_energy_released * energy_efficiency
+		current_heat_generated = current_energy_released * (1.0 - energy_efficiency)
+	## For endergonic reactions (ΔG > 0)  
+	else:
+		current_energy_released = 0.0
+		current_useful_work = -current_delta_g_actual * net_rate  # Energy consumed
+		current_heat_generated = abs(current_useful_work) * 0.1  # Some heat from friction
 
 ## Calculate equilibrium constant from standard free energy
 func calculate_keq() -> float:
