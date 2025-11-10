@@ -49,7 +49,8 @@ func update_reaction_rates(molecules: Dictionary, available_energy: float) -> vo
 	current_total_reverse_rate = 0.0
 	
 	for reaction in reactions:
-		reaction.calculate_forward_rate(molecules, concentration, available_energy)
+		## Fixed: removed available_energy parameter to match reaction.gd signature
+		reaction.calculate_forward_rate(molecules, concentration)
 		reaction.calculate_reverse_rate(molecules, concentration)
 		
 		current_total_forward_rate += reaction.current_forward_rate

@@ -36,7 +36,8 @@ func update_heat(delta: float, reactions: Array[Reaction]) -> void:
 	
 	## Accumulate heat from all reactions
 	for reaction in reactions:
-		heat_generated_this_frame += reaction.current_heat_waste
+		## Use actual property from reaction.gd: current_heat_generated
+		heat_generated_this_frame += reaction.current_heat_generated
 	
 	## Add to total heat
 	heat += heat_generated_this_frame * delta
@@ -59,14 +60,14 @@ func update_energy_pool(delta: float, reactions: Array[Reaction]) -> void:
 	for reaction in reactions:
 		var net_rate = reaction.current_forward_rate - reaction.current_reverse_rate
 		if net_rate > 0:
-			var energy_flow = reaction.calculate_energy_flow(net_rate, molecules)
-			energy_change += energy_flow["usable_energy"]
+			## Use actual property from reaction.gd: current_useful_work
+			energy_change += reaction.current_useful_work
 			
 			## Track totals
-			if energy_flow["usable_energy"] > 0:
-				total_energy_generated += energy_flow["usable_energy"] * delta
+			if reaction.current_useful_work > 0:
+				total_energy_generated += reaction.current_useful_work * delta
 			else:
-				total_energy_consumed += abs(energy_flow["usable_energy"]) * delta
+				total_energy_consumed += abs(reaction.current_useful_work) * delta
 	
 	## Update pool
 	usable_energy_pool += energy_change * delta

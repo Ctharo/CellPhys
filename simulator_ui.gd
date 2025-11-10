@@ -120,7 +120,7 @@ func update_molecule_list() -> void:
 			ui["label"].text = "%s: %.3f mM\n  Code: %s" % [
 				mol.name,
 				mol.concentration,
-				mol.get_code_string()
+				mol.get_genetic_code_string()
 			]
 
 func update_enzyme_list() -> void:
@@ -192,14 +192,18 @@ func update_reaction_panel(panel: PanelContainer, reaction: Reaction) -> void:
 			var dg_color = Color.GREEN if reaction.current_delta_g_actual < 0 else Color.RED
 			label.add_theme_color_override("font_color", dg_color)
 		elif label.name == "RxnEfficiency":
-			label.text = "Efficiency: Struct=%.2f Thermo=%.2f" % [
-				reaction.structural_efficiency,
-				reaction.thermodynamic_efficiency
+			## Fixed: use genetic_efficiency instead of structural_efficiency
+			## Calculate total efficiency on the fly
+			var total_eff = reaction.get_total_efficiency()
+			label.text = "Efficiency: Genetic=%.2f Total=%.2f" % [
+				reaction.genetic_efficiency,
+				total_eff
 			]
 		elif label.name == "RxnEnergy":
+			## Fixed: use actual properties from reaction.gd
 			label.text = "Energy: Usable=%.2f Heat=%.2f kJ/s" % [
-				reaction.current_usable_energy,
-				reaction.current_heat_waste
+				reaction.current_useful_work,
+				reaction.current_heat_generated
 			]
 
 func update_molecule_detail() -> void:
@@ -212,10 +216,9 @@ func update_molecule_detail() -> void:
 		if child.name == "ConcentrationLabel":
 			child.text = "Concentration: %.3f mM" % mol.concentration
 		elif child.name == "PropertiesLabel":
-			child.text = "Potential Energy: %.1f kJ/mol\nBond Strength: %.2f\nCode: %s" % [
+			child.text = "Potential Energy: %.1f kJ/mol\nGenetic Code: %s" % [
 				mol.potential_energy,
-				mol.bond_strength,
-				mol.get_code_string()
+				mol.get_genetic_code_display()
 			]
 
 ## ============================================================================
@@ -241,7 +244,7 @@ func add_molecule_ui(mol_name: String) -> void:
 	label_button.text = "%s: %.3f mM\n  Code: %s" % [
 		mol_name,
 		mol.concentration,
-		mol.get_code_string()
+		mol.get_genetic_code_string()
 	]
 	label_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -374,17 +377,18 @@ func create_reaction_display(reaction: Reaction) -> PanelContainer:
 	
 	var eff_label = Label.new()
 	eff_label.name = "RxnEfficiency"
-	eff_label.text = "Efficiency: Struct=%.2f Thermo=%.2f" % [
-		reaction.structural_efficiency,
-		reaction.thermodynamic_efficiency
+	var total_eff = reaction.get_total_efficiency()
+	eff_label.text = "Efficiency: Genetic=%.2f Total=%.2f" % [
+		reaction.genetic_efficiency,
+		total_eff
 	]
 	vbox.add_child(eff_label)
 	
 	var energy_label = Label.new()
 	energy_label.name = "RxnEnergy"
 	energy_label.text = "Energy: Usable=%.2f Heat=%.2f kJ/s" % [
-		reaction.current_usable_energy,
-		reaction.current_heat_waste
+		reaction.current_useful_work,
+		reaction.current_heat_generated
 	]
 	vbox.add_child(energy_label)
 	
@@ -411,9 +415,8 @@ func build_molecule_detail_view(mol_name: String) -> void:
 	
 	var props_label = Label.new()
 	props_label.name = "PropertiesLabel"
-	props_label.text = "Potential Energy: %.1f kJ/mol\nBond Strength: %.2f\nCode: %s" % [
+	props_label.text = "Potential Energy: %.1f kJ/mol\nGenetic Code: %s" % [
 		mol.potential_energy,
-		mol.bond_strength,
-		mol.get_code_string()
+		mol.get_genetic_code_display()
 	]
 	molecule_detail_container.add_child(props_label)
