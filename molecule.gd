@@ -25,9 +25,9 @@ static var fragment_codes: Dictionary = {
 	
 	# Functional groups/modifications
 	"Phosphate": [9, 0] as Array[int],
-	"P": [9, 0],  ## Shorthand
+	"P": [9, 0] as Array[int],  ## Shorthand
 	"Diphosphate": [9, 0, 9, 0] as Array[int],
-	"PP": [9, 0, 9, 0],  ## Shorthand
+	"PP": [9, 0, 9, 0] as Array[int],  ## Shorthand
 	"Triphosphate": [9, 0, 9, 0, 9, 0] as Array[int],
 	"PPP": [9, 0, 9, 0, 9, 0] as Array[int],  ## Shorthand
 	
