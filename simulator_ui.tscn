@@ -1,4 +1,4 @@
-[gd_scene load_steps=0 format=3 uid="uid://c8yv3m2p4nqr7"]
+[gd_scene format=3 uid="uid://c8yv3m2p4nqr7"]
 
 [node name="SimulatorUI" type="Control"]
 layout_mode = 3
@@ -39,6 +39,7 @@ text = "Reset"
 
 [node name="SystemEnergeticsLabel" type="Label" parent="MainContainer"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(50, 20)
 layout_mode = 2
 text = "⚡ System Flow: Fwd: 0.00 | Rev: 0.00 | Net: 0.00 mM/s
   ΣΔG: 0.0 kJ/mol | Fav:0 Eq:0 Unfav:0"
@@ -73,6 +74,7 @@ show_percentage = false
 
 [node name="EnergyLabel" type="Label" parent="MainContainer/StatusBar"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(50, 25)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "⚡ Energy Pool: 100.0 kJ

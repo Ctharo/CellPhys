@@ -34,9 +34,6 @@ func _ready() -> void:
 	## Initialize with random molecules and enzymes
 	initialize_random_system()
 	
-	## UI will be built in the scene file
-	ui_manager.update_all()
-	
 	print("✅ Dynamic Biochemistry Simulator initialized")
 	print("🔥 Heat: %.1f (survival range: %.1f - %.1f)" % [cell.heat, cell.min_heat_threshold, cell.max_heat_threshold])
 

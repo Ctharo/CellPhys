@@ -29,16 +29,19 @@ func _init(sim: EnzymeSimulator) -> void:
 	simulator = sim
 
 func _ready() -> void:
-	## Connect buttons
+	## Defer connections to next frame when @onready vars are ready
+	call_deferred("_connect_signals")
+	
+	## Initial build
+	call_deferred("rebuild_molecule_list")
+	call_deferred("rebuild_enzyme_list")
+
+func _connect_signals() -> void:
 	pause_button.pressed.connect(simulator._on_pause_button_pressed)
 	pause_button.pressed.connect(func(): pause_button.text = "Resume" if simulator.is_paused else "Pause")
 	reset_button.pressed.connect(simulator._on_reset_button_pressed)
 	add_molecule_button.pressed.connect(simulator._on_add_molecule_pressed)
 	add_enzyme_button.pressed.connect(simulator._on_add_enzyme_pressed)
-	
-	## Initial build
-	rebuild_molecule_list()
-	rebuild_enzyme_list()
 
 ## ============================================================================
 ## UPDATE FUNCTIONS
