@@ -2,7 +2,7 @@
 extends Node
 
 func _ready() -> void:
-	var simulator = load("res://enzyme_simulator.tscn").instantiate()
+	var simulator = Simulator.new()
 	simulator.name = "SimEngine"
 	add_child(simulator)
 	print("✅ Dynamic Biochemistry Simulator launched!")

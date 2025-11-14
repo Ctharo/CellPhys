@@ -1,7 +1,7 @@
 ## Biochemistry simulator with thermal survival dynamics
 ## Cells must maintain heat balance through efficient metabolism
-class_name EnzymeSimulator
-extends Control
+class_name Simulator
+extends Node
 
 ## Cell and simulation state
 var cell: Cell
@@ -15,23 +15,15 @@ var is_paused: bool = false
 var selected_enzyme: Enzyme = null
 var selected_molecule: String = ""
 
-## UI manager
-var ui_manager: SimulatorUI
-
 ## Constants
 const R: float = 8.314e-3
 const TEMPERATURE: float = 310.0
 
 func _ready() -> void:
-	## Initialize cell
 	cell = Cell.new()
 	molecular_generator = MolecularGenerator.new(cell)
 	
-	## Setup UI
-	ui_manager = SimulatorUI.new(self)
-	add_child(ui_manager)
 	
-	## Initialize with random molecules and enzymes
 	initialize_random_system()
 	
 	print("✅ Dynamic Biochemistry Simulator initialized")
@@ -45,7 +37,6 @@ func _process(delta: float) -> void:
 	if fmod(total_time, timestep) < delta:
 		simulate_step()
 		iteration += 1
-		ui_manager.update_all()
 
 ## ============================================================================
 ## INITIALIZATION
@@ -244,26 +235,20 @@ func _on_reset_button_pressed() -> void:
 	selected_molecule = ""
 	
 	initialize_random_system()
-	ui_manager.rebuild_molecule_list()
-	ui_manager.rebuild_enzyme_list()
-	ui_manager.update_all()
+
 	
 	print("✅ System reset with new random configuration")
 
 func _on_add_molecule_pressed() -> void:
 	add_random_molecule()
-	ui_manager.rebuild_molecule_list()
 
 func _on_add_enzyme_pressed() -> void:
 	add_random_enzyme()
-	ui_manager.rebuild_enzyme_list()
 
 func on_enzyme_selected(enzyme: Enzyme) -> void:
 	selected_enzyme = enzyme
 	selected_molecule = ""
-	ui_manager.show_enzyme_detail(enzyme)
 
 func on_molecule_info_clicked(mol_name: String) -> void:
 	selected_molecule = mol_name
 	selected_enzyme = null
-	ui_manager.show_molecule_detail(mol_name)
