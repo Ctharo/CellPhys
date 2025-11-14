@@ -217,38 +217,3 @@ func calculate_system_energetics() -> Dictionary:
 		"unfavorable_count": unfavorable_count,
 		"equilibrium_count": equilibrium_count
 	}
-
-## ============================================================================
-## BUTTON CALLBACKS
-## ============================================================================
-
-func _on_pause_button_pressed() -> void:
-	is_paused = !is_paused
-
-func _on_reset_button_pressed() -> void:
-	## Full reset
-	cell = Cell.new()
-	molecular_generator = MolecularGenerator.new(cell)
-	total_time = 0.0
-	iteration = 0
-	selected_enzyme = null
-	selected_molecule = ""
-	
-	initialize_random_system()
-
-	
-	print("✅ System reset with new random configuration")
-
-func _on_add_molecule_pressed() -> void:
-	add_random_molecule()
-
-func _on_add_enzyme_pressed() -> void:
-	add_random_enzyme()
-
-func on_enzyme_selected(enzyme: Enzyme) -> void:
-	selected_enzyme = enzyme
-	selected_molecule = ""
-
-func on_molecule_info_clicked(mol_name: String) -> void:
-	selected_molecule = mol_name
-	selected_enzyme = null
