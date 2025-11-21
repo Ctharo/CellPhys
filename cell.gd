@@ -75,22 +75,23 @@ func update_energy_pool(delta: float, reactions: Array[Reaction]) -> void:
 
 ## Check if cell survives current conditions
 func check_survival() -> void:
-	if not is_alive:
-		return
-	
-	## Death from overheating
-	if heat > max_heat_threshold:
-		is_alive = false
-		death_reason = "Thermal runaway (heat > %.1f)" % max_heat_threshold
-		print("💀 Cell died: %s" % death_reason)
-		return
-	
-	## Death from cooling
-	if heat < min_heat_threshold:
-		is_alive = false
-		death_reason = "Insufficient metabolism (heat < %.1f)" % min_heat_threshold
-		print("💀 Cell died: %s" % death_reason)
-		return
+	return
+	#if not is_alive:
+		#return
+	#
+	### Death from overheating
+	#if heat > max_heat_threshold:
+		#is_alive = false
+		#death_reason = "Thermal runaway (heat > %.1f)" % max_heat_threshold
+		#print("💀 Cell died: %s" % death_reason)
+		#return
+	#
+	### Death from cooling
+	#if heat < min_heat_threshold:
+		#is_alive = false
+		#death_reason = "Insufficient metabolism (heat < %.1f)" % min_heat_threshold
+		#print("💀 Cell died: %s" % death_reason)
+		#return
 
 ## Get thermal status
 func get_thermal_status() -> Dictionary:
