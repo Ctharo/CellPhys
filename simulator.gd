@@ -186,21 +186,18 @@ func remove_enzyme(enzyme: Enzyme) -> void:
 
 ## Calculate system energetics
 func calculate_system_energetics() -> Dictionary:
-	var total_forward_rate = 0.0
-	var total_reverse_rate = 0.0
-	var total_net_rate = 0.0
-	var sum_delta_g = 0.0
+	var total_dg = 0.0
 	var favorable_count = 0
 	var unfavorable_count = 0
 	var equilibrium_count = 0
+	var total_energy_flux = 0.0
+	var total_heat_flux = 0.0
 	
 	for enzyme in cell.enzymes:
-		total_forward_rate += enzyme.current_total_forward_rate
-		total_reverse_rate += enzyme.current_total_reverse_rate
-		total_net_rate += enzyme.current_net_rate
-		
 		for reaction in enzyme.reactions:
-			sum_delta_g += reaction.current_delta_g_actual
+			total_dg += reaction.current_delta_g_actual
+			total_energy_flux += reaction.current_useful_work
+			total_heat_flux += reaction.current_heat_generated
 			
 			if reaction.current_delta_g_actual < -5.0:
 				favorable_count += 1
@@ -210,17 +207,14 @@ func calculate_system_energetics() -> Dictionary:
 				equilibrium_count += 1
 	
 	return {
-		"total_forward_rate": total_forward_rate,
-		"total_reverse_rate": total_reverse_rate,
-		"total_net_rate": total_net_rate,
-		"sum_delta_g": sum_delta_g,
+		"sum_delta_g": total_dg,
 		"favorable_count": favorable_count,
 		"unfavorable_count": unfavorable_count,
-		"equilibrium_count": equilibrium_count
+		"equilibrium_count": equilibrium_count,
+		"total_energy_flux": total_energy_flux,
+		"total_heat_flux": total_heat_flux
 	}
 #endregion
-## Add this method to your Simulator class (enzyme_simulator.gd or similar)
-## Comprehensive status printout for the biochemistry simulator
 
 ## Helper function to repeat a string n times
 func _repeat_string(s: String, count: int) -> String:
@@ -391,19 +385,20 @@ func _print_system_metrics() -> void:
 	print("\n📊 SYSTEM METRICS")
 	print(_repeat_string("─", 80))
 	
-	var total_fwd = 0.0
-	var total_rev = 0.0
 	var total_dg = 0.0
 	var favorable_count = 0
 	var equilibrium_count = 0
 	var unfavorable_count = 0
+	var total_energy_flux = 0.0  ## kJ/s
+	var total_heat_flux = 0.0    ## kJ/s
+	var active_reaction_count = 0
 	
-	## Aggregate from all enzymes
+	## Aggregate from all reactions
 	for enzyme in cell.enzymes:
-		total_fwd += enzyme.current_total_forward_rate
-		total_rev += enzyme.current_total_reverse_rate
-		
 		for reaction in enzyme.reactions:
+			var net_rate = reaction.current_forward_rate - reaction.current_reverse_rate
+			
+			## Thermodynamic metrics
 			total_dg += reaction.current_delta_g_actual
 			
 			if reaction.current_delta_g_actual < -2.0:
@@ -412,23 +407,72 @@ func _print_system_metrics() -> void:
 				unfavorable_count += 1
 			else:
 				equilibrium_count += 1
+			
+			## Energy and heat fluxes
+			total_energy_flux += reaction.current_useful_work
+			total_heat_flux += reaction.current_heat_generated
+			
+			## Count active reactions
+			if abs(net_rate) > 0.001:
+				active_reaction_count += 1
 	
-	var total_net = total_fwd - total_rev
+	var total_reaction_count = _count_total_reactions()
 	
-	print("   Total Forward Rate: %.3f mM/s" % total_fwd)
-	print("   Total Reverse Rate: %.3f mM/s" % total_rev)
-	print("   Total Net Rate: %.3f mM/s" % total_net)
+	## System thermodynamics
 	print("   System ΣΔG: %.1f kJ/mol" % total_dg)
 	print("   Reactions: Favorable=%d | Equilibrium=%d | Unfavorable=%d" % [
 		favorable_count,
 		equilibrium_count,
 		unfavorable_count
 	])
+	print("   Active Reactions: %d / %d" % [active_reaction_count, total_reaction_count])
+	
+	## Energy accounting
+	print("   Total Energy Flux: %.3f kJ/s" % total_energy_flux)
+	print("   Total Heat Flux: %.3f kJ/s" % total_heat_flux)
+	
+	if abs(total_energy_flux + total_heat_flux) > 0.001:
+		var system_efficiency = (total_energy_flux / (total_energy_flux + total_heat_flux)) * 100.0
+		print("   Instantaneous Efficiency: %.1f%%" % system_efficiency)
+	
+	## Key molecular currencies (if they exist)
+	_print_currency_metrics()
 	
 	## Genetic diversity
 	if cell.molecules.size() > 1:
 		var avg_diversity = _calculate_average_genetic_diversity()
 		print("   Avg Genetic Diversity: %.2f" % avg_diversity)
+
+## Print metrics for key molecular currencies (ATP, NADH, etc.)
+func _print_currency_metrics() -> void:
+	var currencies = ["ATP", "ADP", "AMP", "NADH", "NAD", "FADH2", "FAD"]
+	var found_currencies: Array[String] = []
+	
+	for currency in currencies:
+		if cell.molecules.has(currency):
+			found_currencies.append(currency)
+	
+	if found_currencies.is_empty():
+		return
+	
+	print("   Energy Currencies:")
+	for currency in found_currencies:
+		var mol: Molecule = cell.molecules[currency]
+		var net_rate = _calculate_molecule_net_rate(currency)
+		var indicator = _get_rate_indicator(net_rate)
+		print("      %s %s: %.3f mM %s" % [
+			indicator,
+			currency,
+			mol.concentration,
+			_format_rate(net_rate)
+		])
+
+## Count total reactions in the system
+func _count_total_reactions() -> int:
+	var count = 0
+	for enzyme in cell.enzymes:
+		count += enzyme.reactions.size()
+	return count
 
 ## Helper: Calculate net production rate for a molecule
 func _calculate_molecule_net_rate(mol_name: String) -> float:
