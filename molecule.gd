@@ -14,49 +14,6 @@ var genetic_code: Array[int] = []  ## Variable-length code representing molecula
 var base_molecule: String = ""  ## Name of base molecule (if derivative)
 var modifications: Array[String] = []  ## List of modifications applied
 
-## Static registry for molecular fragments
-static var fragment_codes: Dictionary = {
-	# Base molecular structures
-	"Glucose": [5, 5, 5, 5, 5, 5] as Array[int],
-	"Ribose": [5, 5, 5, 5, 4] as Array[int],
-	"Pyruvate": [3, 3, 3] as Array[int],
-	"Acetyl": [2, 2] as Array[int],
-	"Lactate": [3, 3, 3, 1] as Array[int],
-	
-	# Functional groups/modifications
-	"Phosphate": [9, 0] as Array[int],
-	"P": [9, 0] as Array[int],  ## Shorthand
-	"Diphosphate": [9, 0, 9, 0] as Array[int],
-	"PP": [9, 0, 9, 0] as Array[int],  ## Shorthand
-	"Triphosphate": [9, 0, 9, 0, 9, 0] as Array[int],
-	"PPP": [9, 0, 9, 0, 9, 0] as Array[int],  ## Shorthand
-	
-	# Nucleotide bases
-	"Adenine": [1, 1, 1] as Array[int],
-	"A": [1, 1, 1] as Array[int],
-	"Guanine": [1, 1, 2] as Array[int],
-	"G": [1, 1, 2] as Array[int],
-	"Cytosine": [2, 2, 1] as Array[int],
-	"C": [2, 2, 1] as Array[int],
-	"Uracil": [2, 2, 0] as Array[int],
-	"U": [2, 2, 0] as Array[int],
-	
-	# Other common groups
-	"Amino": [7, 7] as Array[int],
-	"NH2": [7, 7] as Array[int],
-	"Carboxyl": [8, 8] as Array[int],
-	"COOH": [8, 8] as Array[int],
-	"Hydroxyl": [6, 6] as Array[int],
-	"OH": [6, 6] as Array[int],
-	"Methyl": [4, 4] as Array[int],
-	"CH3": [4, 4] as Array[int],
-	
-	# Cofactors
-	"NAD": [1, 1, 1, 5, 5, 9, 0] as Array[int],
-	"FAD": [1, 1, 1, 5, 5, 9, 0, 9, 0] as Array[int],
-	"CoA": [2, 2, 9, 0, 9, 0, 9, 0] as Array[int],
-}
-
 func _init(p_name: String, p_conc: float, p_genetic_code: Array[int] = []) -> void:
 	name = p_name
 	concentration = p_conc
@@ -67,90 +24,23 @@ func _init(p_name: String, p_conc: float, p_genetic_code: Array[int] = []) -> vo
 	
 	## Use provided genetic code or generate from name
 	if p_genetic_code.is_empty():
-		genetic_code = generate_code_from_name(p_name)
+		genetic_code = generate_random_code(randi_range(4, 10))
 	else:
 		genetic_code = p_genetic_code.duplicate()
 
-## Generate genetic code from molecule name using fragment composition
-static func generate_code_from_name(mol_name: String) -> Array[int]:
-	var code: Array[int]
+## Generate a random molecule name
+static func generate_random_name() -> String:
+	const PREFIXES = ["Hex", "Pent", "Oct", "Tri", "Di", "Poly", "Meta", "Para", "Ortho", "Iso", "Neo"]
+	const MIDDLES = ["ox", "yl", "an", "en", "in", "id", "ose", "ase", "ac", "ur", "pyr"]
+	const SUFFIXES = ["ate", "ite", "ose", "ide", "ine", "one", "ol", "al", "ane", "ene"]
 	
-	## Try to parse the name for known fragments
-	var found_fragments = false
+	var name = PREFIXES[randi() % PREFIXES.size()]
+	name += MIDDLES[randi() % MIDDLES.size()]
 	
-	## Check for common patterns (e.g., "Glucose-6-Phosphate" or "G6P")
-	for fragment_name in fragment_codes.keys():
-		if mol_name.contains(fragment_name):
-			code.append_array(fragment_codes[fragment_name])
-			found_fragments = true
+	if randf() > 0.3:  ## 70% chance of suffix
+		name += SUFFIXES[randi() % SUFFIXES.size()]
 	
-	## Handle special naming patterns
-	## Pattern: Base + number + modification (e.g., "Glucose-6-P" or "G6P")
-	if "6P" in mol_name or "6-P" in mol_name:
-		if code.is_empty() and ("Glucose" in mol_name or mol_name.begins_with("G")):
-			code.append_array(fragment_codes["Glucose"])
-		if not has_fragment(code, fragment_codes["Phosphate"]):
-			code.append_array(fragment_codes["Phosphate"])
-		found_fragments = true
-	
-	## Pattern: ATP, ADP, AMP
-	if mol_name == "ATP":
-		code = fragment_codes["Adenine"].duplicate() 
-		code.append_array(fragment_codes["Ribose"])
-		code.append_array(fragment_codes["Triphosphate"])
-		return code
-	elif mol_name == "ADP":
-		code = fragment_codes["Adenine"].duplicate()
-		code.append_array(fragment_codes["Ribose"])
-		code.append_array(fragment_codes["Diphosphate"])
-		return code
-	elif mol_name == "AMP":
-		code = fragment_codes["Adenine"].duplicate()
-		code.append_array(fragment_codes["Ribose"])
-		code.append_array(fragment_codes["Phosphate"])
-		return code
-	
-	## Pattern: Simple phosphate (Pi, PPi)
-	if mol_name == "Pi":
-		return fragment_codes["Phosphate"].duplicate()
-	elif mol_name == "PPi":
-		return fragment_codes["Diphosphate"].duplicate()
-	
-	## If no fragments found, generate random code
-	if not found_fragments or code.is_empty():
-		var length = randi_range(4, 10)
-		for i in range(length):
-			code.append(randi() % 10)
-	
-	return code
-
-## Check if code contains a specific fragment
-static func has_fragment(code: Array[int], fragment: Array[int]) -> bool:
-	if fragment.size() > code.size():
-		return false
-	
-	for i in range(code.size() - fragment.size() + 1):
-		var match_found = true
-		for j in range(fragment.size()):
-			if code[i + j] != fragment[j]:
-				match_found = false
-				break
-		if match_found:
-			return true
-	
-	return false
-
-## Generate code by combining base molecule with modifications
-static func generate_derivative_code(base_code: Array[int], modification: String) -> Array[int]:
-	var new_code = base_code.duplicate()
-	
-	if fragment_codes.has(modification):
-		new_code.append_array(fragment_codes[modification])
-	else:
-		## Unknown modification, add random digits
-		new_code.append_array([randi() % 10, randi() % 10])
-	
-	return new_code
+	return name
 
 ## Generate a random genetic code of specified length
 static func generate_random_code(length: int = 6) -> Array[int]:
@@ -220,6 +110,23 @@ func similarity_to(other: Molecule) -> float:
 	
 	return max(0.0, similarity)
 
+## Create a product molecule from this substrate based on reaction efficiency
+## High efficiency = more similar product, low efficiency = more different product
+static func create_product_from_substrate(substrate: Molecule, efficiency: float) -> Molecule:
+	## Mutation rate inversely proportional to efficiency
+	## High efficiency (0.9) = low mutation (0.1)
+	## Low efficiency (0.3) = high mutation (0.7)
+	var mutation_rate = 1.0 - efficiency
+	
+	var new_code = create_mutated_code(substrate.genetic_code, mutation_rate)
+	var product_name = generate_random_name()
+	var product = Molecule.new(product_name, 0.0, new_code)
+	
+	## Potential energy based on reaction energetics (set by caller)
+	## This will be adjusted in Reaction based on ΔG
+	
+	return product
+
 ## Create a similar molecule through mutation
 static func create_mutated_code(base_code: Array[int], mutation_rate: float = 0.3) -> Array[int]:
 	var new_code: Array[int] = []
@@ -233,7 +140,7 @@ static func create_mutated_code(base_code: Array[int], mutation_rate: float = 0.
 			new_code.append(digit)
 	
 	## Small chance of insertion or deletion
-	if randf() < 0.1:
+	if randf() < mutation_rate * 0.3:  ## Scale with mutation rate
 		if randf() < 0.5 and new_code.size() > 2:
 			## Deletion
 			new_code.remove_at(randi() % new_code.size())
@@ -242,39 +149,6 @@ static func create_mutated_code(base_code: Array[int], mutation_rate: float = 0.
 			new_code.insert(randi() % (new_code.size() + 1), randi() % 10)
 	
 	return new_code
-
-## Add a functional group/modification to this molecule's code
-func add_modification(modification: String) -> void:
-	modifications.append(modification)
-	if fragment_codes.has(modification):
-		genetic_code.append_array(fragment_codes[modification])
-	else:
-		## Unknown modification, add some random digits
-		genetic_code.append_array([randi() % 10, randi() % 10])
-
-## Remove a functional group/modification from this molecule's code
-func remove_modification(modification: String) -> bool:
-	if not modifications.has(modification):
-		return false
-	
-	modifications.erase(modification)
-	
-	if fragment_codes.has(modification):
-		var fragment = fragment_codes[modification]
-		## Find and remove the fragment from the code
-		for i in range(genetic_code.size() - fragment.size() + 1):
-			var match_found = true
-			for j in range(fragment.size()):
-				if genetic_code[i + j] != fragment[j]:
-					match_found = false
-					break
-			if match_found:
-				## Remove the fragment
-				for _k in range(fragment.size()):
-					genetic_code.remove_at(i)
-				return true
-	
-	return false
 
 ## Get string representation of genetic code
 func get_genetic_code_string() -> String:
@@ -292,7 +166,7 @@ func get_genetic_code_display() -> String:
 
 ## Get a readable summary
 func get_summary() -> String:
-	var summary = "%s: %.3f mM, E=%.1f kJ/mol\n  DNA=%s" % [
+	var summary = "%s: %.3f mM, E=%.1f kJ/mol, DNA=%s" % [
 		name,
 		concentration,
 		potential_energy,
@@ -300,7 +174,7 @@ func get_summary() -> String:
 	]
 	
 	if not modifications.is_empty():
-		summary += "\n  Mods: " + ", ".join(modifications)
+		summary += " | Mods: " + ", ".join(modifications)
 	
 	return summary
 

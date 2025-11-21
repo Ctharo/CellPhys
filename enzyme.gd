@@ -9,10 +9,10 @@ var initial_concentration: float
 var reactions: Array[Reaction] = []
 var temperature: float = 310.0
 
-## Runtime state
-var current_total_forward_rate: float = 0.0
-var current_total_reverse_rate: float = 0.0
-var current_net_rate: float = 0.0
+## Runtime state #FIXME: These don't mean anything? These belong to each reaction, not the enzyme in total
+var current_total_forward_rate: float = 0.0 #TODO: Delete
+var current_total_reverse_rate: float = 0.0 #TODO: Delete
+var current_net_rate: float = 0.0 #TODO: Delete
 
 func _init(p_id: String, p_name: String) -> void:
 	id = p_id
@@ -43,13 +43,12 @@ func is_sink() -> bool:
 			return false
 	return true
 
-## Update rates for all reactions
+## Update rates for all reactions #FIXME Not used?
 func update_reaction_rates(molecules: Dictionary, available_energy: float) -> void:
 	current_total_forward_rate = 0.0
 	current_total_reverse_rate = 0.0
 	
 	for reaction in reactions:
-		## Fixed: removed available_energy parameter to match reaction.gd signature
 		reaction.calculate_forward_rate(molecules, concentration)
 		reaction.calculate_reverse_rate(molecules, concentration)
 		

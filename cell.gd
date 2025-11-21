@@ -36,7 +36,6 @@ func update_heat(delta: float, reactions: Array[Reaction]) -> void:
 	
 	## Accumulate heat from all reactions
 	for reaction in reactions:
-		## Use actual property from reaction.gd: current_heat_generated
 		heat_generated_this_frame += reaction.current_heat_generated
 	
 	## Add to total heat
@@ -60,7 +59,6 @@ func update_energy_pool(delta: float, reactions: Array[Reaction]) -> void:
 	for reaction in reactions:
 		var net_rate = reaction.current_forward_rate - reaction.current_reverse_rate
 		if net_rate > 0:
-			## Use actual property from reaction.gd: current_useful_work
 			energy_change += reaction.current_useful_work
 			
 			## Track totals
@@ -75,23 +73,22 @@ func update_energy_pool(delta: float, reactions: Array[Reaction]) -> void:
 
 ## Check if cell survives current conditions
 func check_survival() -> void:
-	return
-	#if not is_alive:
-		#return
-	#
-	### Death from overheating
-	#if heat > max_heat_threshold:
-		#is_alive = false
-		#death_reason = "Thermal runaway (heat > %.1f)" % max_heat_threshold
-		#print("💀 Cell died: %s" % death_reason)
-		#return
-	#
-	### Death from cooling
-	#if heat < min_heat_threshold:
-		#is_alive = false
-		#death_reason = "Insufficient metabolism (heat < %.1f)" % min_heat_threshold
-		#print("💀 Cell died: %s" % death_reason)
-		#return
+	if not is_alive:
+		return
+	
+	## Death from overheating
+	if heat > max_heat_threshold:
+		is_alive = false
+		death_reason = "Thermal runaway (heat > %.1f)" % max_heat_threshold
+		print("💀 Cell died: %s" % death_reason)
+		return
+	
+	## Death from cooling
+	if heat < min_heat_threshold:
+		is_alive = false
+		death_reason = "Insufficient metabolism (heat < %.1f)" % min_heat_threshold
+		print("💀 Cell died: %s" % death_reason)
+		return
 
 ## Get thermal status
 func get_thermal_status() -> Dictionary:
