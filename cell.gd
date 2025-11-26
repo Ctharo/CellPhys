@@ -73,6 +73,8 @@ func update_energy_pool(delta: float, reactions: Array[Reaction]) -> void:
 
 ## Check if cell survives current conditions
 func check_survival() -> void:
+	return # HACK
+	@warning_ignore("unreachable_code")
 	if not is_alive:
 		return
 	
