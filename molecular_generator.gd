@@ -25,7 +25,7 @@ func initialize_starting_molecules(count: int) -> void:
 		print("  ✅ Created molecule: %s (%.2f mM)" % [mol.name, mol.concentration])
 
 ## Generate an enzyme with a random reaction
-func generate_enzyme_with_reaction(template: String = "random") -> Enzyme:
+func generate_enzyme_with_reaction(_template: String = "random") -> Enzyme:
 	var enzyme_id = randi() % 10000
 	var enzyme = Enzyme.new("enz_%d" % enzyme_id, "Enzyme%d" % enzyme_id)
 	enzyme.concentration = rng.randf_range(0.001, 0.01)

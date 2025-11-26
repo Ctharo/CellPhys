@@ -43,8 +43,8 @@ func is_sink() -> bool:
 			return false
 	return true
 
-## Update rates for all reactions #FIXME Not used?
-func update_reaction_rates(molecules: Dictionary, available_energy: float) -> void:
+## Update rates for all reactions
+func update_reaction_rates(molecules: Dictionary, _available_energy: float) -> void:
 	current_total_forward_rate = 0.0
 	current_total_reverse_rate = 0.0
 	

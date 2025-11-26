@@ -34,13 +34,13 @@ static func generate_random_name() -> String:
 	const MIDDLES = ["ox", "yl", "an", "en", "in", "id", "ose", "ase", "ac", "ur", "pyr"]
 	const SUFFIXES = ["ate", "ite", "ose", "ide", "ine", "one", "ol", "al", "ane", "ene"]
 	
-	var name = PREFIXES[randi() % PREFIXES.size()]
-	name += MIDDLES[randi() % MIDDLES.size()]
+	var p_name = PREFIXES[randi() % PREFIXES.size()]
+	p_name += MIDDLES[randi() % MIDDLES.size()]
 	
 	if randf() > 0.3:  ## 70% chance of suffix
-		name += SUFFIXES[randi() % SUFFIXES.size()]
+		p_name += SUFFIXES[randi() % SUFFIXES.size()]
 	
-	return name
+	return p_name
 
 ## Generate a random genetic code of specified length
 static func generate_random_code(length: int = 6) -> Array[int]:

@@ -58,7 +58,7 @@ func is_sink() -> bool:
 	return not substrates.is_empty() and products.is_empty()
 
 ## Calculate how much energy goes to work vs heat
-func calculate_energy_partition(net_rate: float, molecules: Dictionary) -> void:
+func calculate_energy_partition(net_rate: float, _molecules: Dictionary) -> void:
 	## For exergonic reactions (ΔG < 0)
 	if current_delta_g_actual < 0:
 		current_energy_released = -current_delta_g_actual * net_rate
