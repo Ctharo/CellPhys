@@ -1,4 +1,4 @@
-## Enzyme that catalyzes reactions
+## Enzyme that catalyzes one or more reactions
 class_name Enzyme
 extends RefCounted
 
@@ -7,12 +7,8 @@ var name: String
 var concentration: float
 var initial_concentration: float
 var reactions: Array[Reaction] = []
-var temperature: float = 310.0
 
-## Runtime state #FIXME: These don't mean anything? These belong to each reaction, not the enzyme in total
-var current_total_forward_rate: float = 0.0 #TODO: Delete
-var current_total_reverse_rate: float = 0.0 #TODO: Delete
-var current_net_rate: float = 0.0 #TODO: Delete
+#region Initialization
 
 func _init(p_id: String, p_name: String) -> void:
 	id = p_id
@@ -26,6 +22,10 @@ func add_reaction(reaction: Reaction) -> void:
 
 func remove_reaction(reaction: Reaction) -> void:
 	reactions.erase(reaction)
+
+#endregion
+
+#region Type Checking
 
 func is_source() -> bool:
 	if reactions.is_empty():
@@ -43,21 +43,21 @@ func is_sink() -> bool:
 			return false
 	return true
 
-## Update rates for all reactions
-func update_reaction_rates(molecules: Dictionary, _available_energy: float) -> void:
-	current_total_forward_rate = 0.0
-	current_total_reverse_rate = 0.0
-	
+#endregion
+
+#region Rate Updates
+
+## Update rates for all reactions this enzyme catalyzes
+func update_reaction_rates(molecules: Dictionary) -> void:
 	for reaction in reactions:
 		reaction.calculate_forward_rate(molecules, concentration)
 		reaction.calculate_reverse_rate(molecules, concentration)
-		
-		current_total_forward_rate += reaction.current_forward_rate
-		current_total_reverse_rate += reaction.current_reverse_rate
-	
-	current_net_rate = current_total_forward_rate - current_total_reverse_rate
+		reaction.calculate_energy_partition(reaction.get_net_rate())
 
-## Get summary of all reactions
+#endregion
+
+#region Display
+
 func get_reactions_summary() -> String:
 	var summary = ""
 	for i in range(reactions.size()):
@@ -65,3 +65,8 @@ func get_reactions_summary() -> String:
 			summary += "\n"
 		summary += reactions[i].get_summary()
 	return summary
+
+func get_summary() -> String:
+	return "%s [%.4f mM] - %d reaction(s)" % [name, concentration, reactions.size()]
+
+#endregion
