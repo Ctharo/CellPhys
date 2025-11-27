@@ -7,6 +7,7 @@ var concentration: float
 var initial_concentration: float
 var potential_energy: float  ## Energy stored in chemical bonds (kJ/mol)
 var structural_code: Array[int] = []  ## Variable-length code representing molecular structure (0-9)
+var is_locked: bool = false  ## If true, concentration won't change during simulation
 
 #region Initialization
 
@@ -98,8 +99,9 @@ func get_code_string() -> String:
 	return s
 
 func get_summary() -> String:
-	return "%s: %.3f mM, E=%.1f kJ/mol, Code=%s" % [
-		name, concentration, potential_energy, get_code_string()
+	var lock_str = " 🔒" if is_locked else ""
+	return "%s: %.3f mM, E=%.1f kJ/mol, Code=%s%s" % [
+		name, concentration, potential_energy, get_code_string(), lock_str
 	]
 
 #endregion

@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3 uid="uid://cro6fq6thlcea"]
+[gd_scene load_steps=5 format=3 uid="uid://cro6fq6thlcea"]
 
 [ext_resource type="Script" uid="uid://buw4t1x75eok5" path="res://ui.gd" id="1_ui"]
 [ext_resource type="Script" uid="uid://jkoy5w1wdlvj" path="res://simulator.gd" id="2_sim"]
 [ext_resource type="Script" uid="uid://vndtp375i6w0" path="res://chart_panel.gd" id="3_chart"]
+[ext_resource type="Script" uid="uid://conc_panel_001" path="res://concentration_panel.gd" id="4_conc"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -14,6 +15,7 @@ grow_vertical = 2
 script = ExtResource("1_ui")
 
 [node name="SimEngine" type="Node" parent="."]
+unique_name_in_owner = true
 script = ExtResource("2_sim")
 
 [node name="MarginContainer" type="MarginContainer" parent="."]
@@ -78,32 +80,105 @@ layout_mode = 2
 [node name="MainContent" type="HSplitContainer" parent="MarginContainer/VBox"]
 layout_mode = 2
 size_flags_vertical = 3
-split_offset = -500
+split_offset = -450
 
 [node name="LeftPanel" type="VBoxContainer" parent="MarginContainer/VBox/MainContent"]
-custom_minimum_size = Vector2(320, 0)
+custom_minimum_size = Vector2(380, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 0.4
+size_flags_stretch_ratio = 0.45
 
-[node name="StatusLabel" type="RichTextLabel" parent="MarginContainer/VBox/MainContent/LeftPanel"]
+[node name="LeftTabs" type="TabContainer" parent="MarginContainer/VBox/MainContent/LeftPanel"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
+
+[node name="Cell" type="MarginContainer" parent="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs"]
+layout_mode = 2
+theme_override_constants/margin_left = 5
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 5
+theme_override_constants/margin_bottom = 5
+
+[node name="CellScroll" type="ScrollContainer" parent="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs/Cell"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="CellPanel" type="RichTextLabel" parent="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs/Cell/CellScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 bbcode_enabled = true
-text = "Loading simulation..."
-scroll_following = true
+text = "Loading cell data..."
+
+[node name="Enzymes" type="MarginContainer" parent="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs"]
+visible = false
+layout_mode = 2
+theme_override_constants/margin_left = 5
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 5
+theme_override_constants/margin_bottom = 5
+
+[node name="EnzymeScroll" type="ScrollContainer" parent="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs/Enzymes"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="EnzymePanel" type="VBoxContainer" parent="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs/Enzymes/EnzymeScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+script = ExtResource("4_conc")
+
+[node name="Molecules" type="MarginContainer" parent="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs"]
+visible = false
+layout_mode = 2
+theme_override_constants/margin_left = 5
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 5
+theme_override_constants/margin_bottom = 5
+
+[node name="MoleculeScroll" type="ScrollContainer" parent="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs/Molecules"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="MoleculePanel" type="VBoxContainer" parent="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs/Molecules/MoleculeScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+script = ExtResource("4_conc")
+
+[node name="Reactions" type="MarginContainer" parent="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs"]
+visible = false
+layout_mode = 2
+theme_override_constants/margin_left = 5
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 5
+theme_override_constants/margin_bottom = 5
+
+[node name="ReactionScroll" type="ScrollContainer" parent="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs/Reactions"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="ReactionPanel" type="RichTextLabel" parent="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs/Reactions/ReactionScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+bbcode_enabled = true
+text = "Loading reactions..."
 
 [node name="RightPanel" type="VBoxContainer" parent="MarginContainer/VBox/MainContent"]
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 0.6
+size_flags_stretch_ratio = 0.55
 theme_override_constants/separation = 5
-
-[node name="ChartTitle" type="Label" parent="MarginContainer/VBox/MainContent/RightPanel"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 16
-text = "📈 Concentration Over Time"
 
 [node name="ChartPanel" type="Panel" parent="MarginContainer/VBox/MainContent/RightPanel"]
 unique_name_in_owner = true
@@ -114,3 +189,8 @@ script = ExtResource("3_chart")
 [connection signal="pressed" from="MarginContainer/VBox/TopBar/PauseButton" to="." method="_on_pause_button_pressed"]
 [connection signal="pressed" from="MarginContainer/VBox/TopBar/ResetButton" to="." method="_on_reset_button_pressed"]
 [connection signal="value_changed" from="MarginContainer/VBox/TopBar/SpeedSlider" to="." method="_on_speed_slider_value_changed"]
+[connection signal="tab_changed" from="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs" to="." method="_on_tab_changed"]
+[connection signal="concentration_changed" from="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs/Enzymes/EnzymeScroll/EnzymePanel" to="." method="_on_enzyme_concentration_changed"]
+[connection signal="lock_changed" from="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs/Enzymes/EnzymeScroll/EnzymePanel" to="." method="_on_enzyme_lock_changed"]
+[connection signal="concentration_changed" from="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs/Molecules/MoleculeScroll/MoleculePanel" to="." method="_on_molecule_concentration_changed"]
+[connection signal="lock_changed" from="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs/Molecules/MoleculeScroll/MoleculePanel" to="." method="_on_molecule_lock_changed"]

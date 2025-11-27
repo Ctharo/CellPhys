@@ -6,6 +6,7 @@ var id: String
 var name: String
 var concentration: float
 var initial_concentration: float
+var is_locked: bool = false  ## If true, concentration won't change during simulation
 var reactions: Array[Reaction] = []
 
 #region Initialization
@@ -67,6 +68,7 @@ func get_reactions_summary() -> String:
 	return summary
 
 func get_summary() -> String:
-	return "%s [%.4f mM] - %d reaction(s)" % [name, concentration, reactions.size()]
+	var lock_str = " 🔒" if is_locked else ""
+	return "%s [%.4f mM] - %d reaction(s)%s" % [name, concentration, reactions.size(), lock_str]
 
 #endregion
