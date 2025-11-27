@@ -7,7 +7,7 @@ extends RefCounted
 var heat: float = 50.0
 var min_heat_threshold: float = 20.0
 var max_heat_threshold: float = 150.0
-var heat_dissipation_rate: float = 0.5  ## Per second
+var heat_dissipation_rate: float = 0.01  ## 1% Per second
 
 #endregion
 
@@ -36,7 +36,7 @@ func update(delta: float, reactions: Array[Reaction]) -> void:
 	if not is_alive:
 		return
 	
-	update_heat(delta, reactions)
+	# update_heat(delta, reactions) HACK
 	update_energy(delta, reactions)
 	check_survival()
 
