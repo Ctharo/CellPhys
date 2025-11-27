@@ -27,26 +27,26 @@ func _ready() -> void:
 ## Create a minimal 2-enzyme, 2-reaction system for testing
 func setup_minimal_system() -> void:
 	## Create 3 molecules: A → B → C (linear pathway)
-	var mol_a = Molecule.new("Substrate_A", 5.0, [1, 2, 3, 4, 5])
-	var mol_b = Molecule.new("Intermediate_B", 1.0, [1, 2, 3, 5, 6])
-	var mol_c = Molecule.new("Product_C", 0.1, [1, 2, 4, 6, 7])
+	var mol_a = Molecule.new("Molecule_A", 5.0, [1, 2, 3, 4, 5])
+	var mol_b = Molecule.new("Molecule_B", 1.0, [1, 2, 3, 5, 6])
+	var mol_c = Molecule.new("Molecule_C", 0.1, [1, 2, 4, 6, 7])
 	
 	## Set meaningful energy levels
 	mol_a.potential_energy = 60.0  ## High energy substrate
 	mol_b.potential_energy = 45.0  ## Medium energy intermediate
 	mol_c.potential_energy = 30.0  ## Low energy product
 	
-	molecules["Substrate_A"] = mol_a
-	molecules["Intermediate_B"] = mol_b
-	molecules["Product_C"] = mol_c
+	molecules["Molecule_A"] = mol_a
+	molecules["Molecule_B"] = mol_b
+	molecules["Molecule_C"] = mol_c
 	
 	## Enzyme 1: Catalyzes A → B (exergonic)
 	var enzyme1 = Enzyme.new("E1", "Kinase_Alpha")
 	enzyme1.concentration = 0.005
 	
 	var rxn1 = Reaction.new("R1", "A_to_B")
-	rxn1.substrates = {"Substrate_A": 1.0}
-	rxn1.products = {"Intermediate_B": 1.0}
+	rxn1.substrates = {"Molecule_A": 1.0}
+	rxn1.products = {"Molecule_B": 1.0}
 	rxn1.delta_g = -8.0  ## Exergonic (favorable)
 	rxn1.vmax = 5.0
 	rxn1.km = 1.0
@@ -60,8 +60,8 @@ func setup_minimal_system() -> void:
 	enzyme2.concentration = 0.003
 	
 	var rxn2 = Reaction.new("R2", "B_to_C")
-	rxn2.substrates = {"Intermediate_B": 1.0}
-	rxn2.products = {"Product_C": 1.0}
+	rxn2.substrates = {"Molecule_B": 1.0}
+	rxn2.products = {"Molecule_C": 1.0}
 	rxn2.delta_g = -5.0  ## Exergonic (favorable)
 	rxn2.vmax = 3.0
 	rxn2.km = 0.5
