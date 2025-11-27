@@ -66,7 +66,7 @@ func update_energy(delta: float, reactions: Array[Reaction]) -> void:
 	usable_energy = max(usable_energy, 0.0)
 
 func check_survival() -> void:
-	## Disabled for testing - uncomment to enable death
+	# TEST -> Keep alive for now, dying immediately
 	return
 	
 	@warning_ignore("unreachable_code")
