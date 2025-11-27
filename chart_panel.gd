@@ -53,7 +53,13 @@ var cell_history: Dictionary = {        ## Fixed keys for cell data
 
 var time_history: Array[float] = []
 var sample_timer: float = 0.0
+
+## Scale state
+var auto_scale: bool = true
+var min_y_value: float = 0.0
 var max_y_value: float = 10.0
+var manual_min: float = 0.0
+var manual_max: float = 10.0
 
 ## Hover state
 var hovered_item: String = ""
@@ -127,12 +133,22 @@ func set_mode(mode: ChartMode) -> void:
 	hovered_item = ""
 	queue_redraw()
 
+func set_auto_scale(enabled: bool) -> void:
+	auto_scale = enabled
+	queue_redraw()
+
+func set_manual_scale(min_val: float, max_val: float) -> void:
+	manual_min = min_val
+	manual_max = max(max_val, min_val + 0.1)  ## Ensure max > min
+	queue_redraw()
+
 func clear_history() -> void:
 	molecule_history.clear()
 	enzyme_history.clear()
 	reaction_history.clear()
 	cell_history = {"energy": [], "heat": [], "generated": [], "consumed": []}
 	time_history.clear()
+	min_y_value = 0.0
 	max_y_value = 10.0
 
 #endregion
@@ -208,12 +224,49 @@ func _get_current_data() -> Dictionary:
 	return {}
 
 func _calculate_max_value(data: Dictionary) -> void:
-	max_y_value = 1.0
+	if not auto_scale:
+		## Use manual values
+		min_y_value = manual_min
+		max_y_value = manual_max
+		return
+	
+	## Auto-scale: find actual min and max from data
+	var data_min: float = 0.0
+	var data_max: float = 1.0
+	var has_data: bool = false
+	
 	for key in data:
 		var history = data[key]
 		for value in history:
-			max_y_value = max(max_y_value, abs(value))
-	max_y_value *= 1.2  ## Add headroom
+			if not has_data:
+				data_min = value
+				data_max = value
+				has_data = true
+			else:
+				data_min = min(data_min, value)
+				data_max = max(data_max, value)
+	
+	if not has_data:
+		min_y_value = 0.0
+		max_y_value = 10.0
+		return
+	
+	## Add padding (10% on each side)
+	var data_range = data_max - data_min
+	if data_range < 0.001:
+		data_range = 1.0  ## Avoid zero range
+	
+	var padding = data_range * 0.1
+	
+	## For most modes, keep min at 0 if all values are positive
+	if data_min >= 0:
+		min_y_value = 0.0
+		max_y_value = data_max + padding
+	else:
+		## Allow negative values (e.g., for reaction rates)
+		min_y_value = data_min - padding
+		max_y_value = data_max + padding
+	
 
 #endregion
 
@@ -239,10 +292,26 @@ func _draw_grid(chart_rect: Rect2) -> void:
 			Vector2(x, chart_rect.end.y),
 			grid_color
 		)
+	
+	## Draw zero line if range crosses zero
+	if min_y_value < 0 and max_y_value > 0:
+		var y_range = max_y_value - min_y_value
+		var zero_normalized = (0.0 - min_y_value) / y_range
+		var zero_y = chart_rect.end.y - zero_normalized * chart_rect.size.y
+		draw_line(
+			Vector2(chart_rect.position.x, zero_y),
+			Vector2(chart_rect.end.x, zero_y),
+			Color(0.5, 0.5, 0.6, 0.8),
+			2.0
+		)
 
 func _draw_data_lines(chart_rect: Rect2, data: Dictionary) -> void:
 	if time_history.is_empty():
 		return
+	
+	var y_range = max_y_value - min_y_value
+	if y_range < 0.001:
+		y_range = 1.0
 	
 	var color_index = 0
 	for item_name in data:
@@ -261,7 +330,7 @@ func _draw_data_lines(chart_rect: Rect2, data: Dictionary) -> void:
 		
 		for i in range(history.size()):
 			var x = chart_rect.position.x + (float(i) / max(history.size() - 1, 1)) * chart_rect.size.x
-			var normalized_y = history[i] / max_y_value
+			var normalized_y = (history[i] - min_y_value) / y_range
 			var y = chart_rect.end.y - normalized_y * chart_rect.size.y
 			y = clamp(y, chart_rect.position.y, chart_rect.end.y)
 			points.append(Vector2(x, y))
@@ -284,7 +353,7 @@ func _draw_data_lines(chart_rect: Rect2, data: Dictionary) -> void:
 			var points: PackedVector2Array = []
 			for i in range(history.size()):
 				var x = chart_rect.position.x + (float(i) / max(history.size() - 1, 1)) * chart_rect.size.x
-				var normalized_y = history[i] / max_y_value
+				var normalized_y = (history[i] - min_y_value) / y_range
 				var y = chart_rect.end.y - normalized_y * chart_rect.size.y
 				y = clamp(y, chart_rect.position.y, chart_rect.end.y)
 				points.append(Vector2(x, y))
@@ -366,11 +435,13 @@ func _draw_axes_labels(chart_rect: Rect2) -> void:
 	var font_size = 10
 	var label_color = Color(0.65, 0.65, 0.7)
 	
+	var y_range = max_y_value - min_y_value
+	
 	## Y-axis labels
 	for i in range(5):
-		var value = max_y_value * (i / 4.0)
+		var value = min_y_value + y_range * (i / 4.0)
 		var y = chart_rect.end.y - chart_rect.size.y * (i / 4.0)
-		var format_str = "%.1f" if value < 10 else "%.0f"
+		var format_str = "%.2f" if abs(value) < 1 else ("%.1f" if abs(value) < 10 else "%.0f")
 		draw_string(
 			font,
 			Vector2(5, y + 4),

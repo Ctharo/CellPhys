@@ -180,6 +180,52 @@ size_flags_horizontal = 3
 size_flags_stretch_ratio = 0.55
 theme_override_constants/separation = 5
 
+[node name="ChartControls" type="HBoxContainer" parent="MarginContainer/VBox/MainContent/RightPanel"]
+layout_mode = 2
+theme_override_constants/separation = 15
+
+[node name="AutoScaleCheck" type="CheckBox" parent="MarginContainer/VBox/MainContent/RightPanel/ChartControls"]
+unique_name_in_owner = true
+layout_mode = 2
+button_pressed = true
+text = "Auto Scale"
+
+[node name="Spacer1" type="Control" parent="MarginContainer/VBox/MainContent/RightPanel/ChartControls"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="MinLabel" type="Label" parent="MarginContainer/VBox/MainContent/RightPanel/ChartControls"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Min:"
+
+[node name="MinSpinBox" type="SpinBox" parent="MarginContainer/VBox/MainContent/RightPanel/ChartControls"]
+unique_name_in_owner = true
+layout_mode = 2
+min_value = -1000.0
+max_value = 1000.0
+step = 0.1
+value = 0.0
+editable = false
+
+[node name="MaxLabel" type="Label" parent="MarginContainer/VBox/MainContent/RightPanel/ChartControls"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Max:"
+
+[node name="MaxSpinBox" type="SpinBox" parent="MarginContainer/VBox/MainContent/RightPanel/ChartControls"]
+unique_name_in_owner = true
+layout_mode = 2
+min_value = -1000.0
+max_value = 10000.0
+step = 0.1
+value = 10.0
+editable = false
+
+[node name="Spacer2" type="Control" parent="MarginContainer/VBox/MainContent/RightPanel/ChartControls"]
+layout_mode = 2
+size_flags_horizontal = 3
+
 [node name="ChartPanel" type="Panel" parent="MarginContainer/VBox/MainContent/RightPanel"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -194,3 +240,6 @@ script = ExtResource("3_chart")
 [connection signal="lock_changed" from="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs/Enzymes/EnzymeScroll/EnzymePanel" to="." method="_on_enzyme_lock_changed"]
 [connection signal="concentration_changed" from="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs/Molecules/MoleculeScroll/MoleculePanel" to="." method="_on_molecule_concentration_changed"]
 [connection signal="lock_changed" from="MarginContainer/VBox/MainContent/LeftPanel/LeftTabs/Molecules/MoleculeScroll/MoleculePanel" to="." method="_on_molecule_lock_changed"]
+[connection signal="toggled" from="MarginContainer/VBox/MainContent/RightPanel/ChartControls/AutoScaleCheck" to="." method="_on_auto_scale_toggled"]
+[connection signal="value_changed" from="MarginContainer/VBox/MainContent/RightPanel/ChartControls/MinSpinBox" to="." method="_on_scale_min_changed"]
+[connection signal="value_changed" from="MarginContainer/VBox/MainContent/RightPanel/ChartControls/MaxSpinBox" to="." method="_on_scale_max_changed"]

@@ -14,6 +14,11 @@ extends Control
 @onready var molecule_panel: ConcentrationPanel = %MoleculePanel
 @onready var reaction_panel: RichTextLabel = %ReactionPanel
 @onready var chart_panel: ChartPanel = %ChartPanel
+@onready var auto_scale_check: CheckBox = %AutoScaleCheck
+@onready var min_label: Label = %MinLabel
+@onready var min_spin_box: SpinBox = %MinSpinBox
+@onready var max_label: Label = %MaxLabel
+@onready var max_spin_box: SpinBox = %MaxSpinBox
 
 #endregion
 
@@ -28,6 +33,9 @@ const UPDATE_INTERVAL: float = 0.1  ## Update UI every 100ms
 func _ready() -> void:
 	speed_slider.max_value = 10.0
 	speed_slider.value = 1.0
+	
+	## Initialize scale controls
+	_update_scale_controls_enabled()
 	
 	## Wait for simulator to initialize
 	await get_tree().process_frame
@@ -76,6 +84,11 @@ func _update_displays() -> void:
 			molecule_panel.update_molecules(sim_engine.molecules)
 		3:  ## Reactions
 			_update_reaction_display()
+	
+	## Sync scale spinboxes with current chart values (shows auto-calculated range)
+	if chart_panel and auto_scale_check.button_pressed:
+		min_spin_box.set_value_no_signal(chart_panel.min_y_value)
+		max_spin_box.set_value_no_signal(chart_panel.max_y_value)
 
 func _update_cell_display() -> void:
 	if not sim_engine or not sim_engine.cell:
@@ -251,5 +264,37 @@ func _on_speed_slider_value_changed(value: float) -> void:
 	
 	if sim_engine:
 		sim_engine.time_scale = value
+
+#endregion
+
+#region Scale Control Handlers
+
+func _update_scale_controls_enabled() -> void:
+	var is_manual = not auto_scale_check.button_pressed
+	min_spin_box.editable = is_manual
+	max_spin_box.editable = is_manual
+	min_label.modulate.a = 1.0 if is_manual else 0.5
+	max_label.modulate.a = 1.0 if is_manual else 0.5
+	min_spin_box.modulate.a = 1.0 if is_manual else 0.5
+	max_spin_box.modulate.a = 1.0 if is_manual else 0.5
+
+func _on_auto_scale_toggled(is_pressed: bool) -> void:
+	_update_scale_controls_enabled()
+	
+	if chart_panel:
+		chart_panel.set_auto_scale(is_pressed)
+		
+		## If switching to manual, initialize spinboxes with current auto values
+		if not is_pressed:
+			min_spin_box.value = chart_panel.min_y_value
+			max_spin_box.value = chart_panel.max_y_value
+
+func _on_scale_min_changed(value: float) -> void:
+	if chart_panel and not auto_scale_check.button_pressed:
+		chart_panel.set_manual_scale(value, max_spin_box.value)
+
+func _on_scale_max_changed(value: float) -> void:
+	if chart_panel and not auto_scale_check.button_pressed:
+		chart_panel.set_manual_scale(min_spin_box.value, value)
 
 #endregion
