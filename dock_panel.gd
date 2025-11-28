@@ -2,7 +2,6 @@
 class_name DockPanel
 extends PanelContainer
 
-signal visibility_changed(panel_name: String, is_visible: bool)
 signal collapse_changed(panel_name: String, is_collapsed: bool)
 
 @export var panel_title: String = "Panel"
