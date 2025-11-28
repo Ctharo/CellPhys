@@ -7,4 +7,5 @@ func _ready() -> void:
 	add_child(simulator)
 	print("✅ Dynamic Biochemistry Simulator launched!")
 	print("🔬 Random molecules and reactions with efficiency-based heat waste")
-	print("📊 Reaction efficiency affects both heat loss and product similarity\n")
+	print("🧬 Protein expression with gene regulation (activators/repressors)")
+	print("📊 Enzyme degradation and synthesis dynamics\n")

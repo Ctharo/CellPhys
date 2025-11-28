@@ -1,136 +1,172 @@
-## Panel for adjusting molecule and enzyme concentrations at runtime
+## Reusable panel for displaying and editing concentrations
+## Used for both enzymes and molecules
 class_name ConcentrationPanel
 extends VBoxContainer
 
-signal concentration_changed(item_name: String, new_value: float, is_enzyme: bool)
-signal lock_changed(item_name: String, is_locked: bool, is_enzyme: bool)
+signal concentration_changed(id: String, value: float)
+signal lock_changed(id: String, locked: bool)
 
-#region Configuration
+var item_entries: Dictionary = {}  ## {id: ItemEntry}
 
-const MIN_CONCENTRATION: float = 0.0
-const MAX_MOLECULE_CONCENTRATION: float = 50.0
-const MAX_ENZYME_CONCENTRATION: float = 0.1
-const SLIDER_STEP: float = 0.001
+class ItemEntry:
+	var container: HBoxContainer
+	var name_label: Label
+	var value_label: Label
+	var slider: HSlider
+	var lock_button: CheckBox
+	var info_label: Label
+	var id: String
 
-#endregion
+#region Setup
 
-#region Internal References
-
-var _controls: Dictionary = {}  ## {name: {slider, label, checkbox, is_enzyme, container}}
-
-#endregion
-
-func _ready() -> void:
-	pass
-
-#region Public API
-
-## Clear all controls
-func clear_controls() -> void:
+func clear() -> void:
 	for child in get_children():
 		child.queue_free()
-	_controls.clear()
+	item_entries.clear()
 
-## Add a molecule concentration control
-func add_molecule_control(mol_name: String, current_conc: float, is_locked: bool = false) -> void:
-	_add_control(mol_name, current_conc, MAX_MOLECULE_CONCENTRATION, false, is_locked)
+func setup_items(items: Array, item_type: String) -> void:
+	clear()
+	
+	if items.is_empty():
+		var empty_label = Label.new()
+		empty_label.text = "No %ss in simulation" % item_type
+		empty_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
+		add_child(empty_label)
+		return
+	
+	for item in items:
+		_create_item_entry(item, item_type)
 
-## Add an enzyme concentration control
-func add_enzyme_control(enz_name: String, current_conc: float, is_locked: bool = false) -> void:
-	_add_control(enz_name, current_conc, MAX_ENZYME_CONCENTRATION, true, is_locked)
+func _create_item_entry(item, item_type: String) -> void:
+	var entry = ItemEntry.new()
+	
+	## Get item properties based on type
+	var item_id: String
+	var item_name: String
+	var item_conc: float
+	var item_locked: bool
+	var extra_info: String = ""
+	
+	if item_type == "enzyme":
+		item_id = item.id
+		item_name = item.name
+		item_conc = item.concentration
+		item_locked = item.is_locked
+		var degrade_str = "t½=%.0fs" % item.half_life if item.is_degradable else "stable"
+		extra_info = "(%s, %d rxn)" % [degrade_str, item.reactions.size()]
+	else:  ## molecule
+		item_id = item.name
+		item_name = item.name
+		item_conc = item.concentration
+		item_locked = item.is_locked
+		extra_info = "(E=%.0f kJ/mol)" % item.potential_energy
+	
+	entry.id = item_id
+	
+	## Container
+	entry.container = HBoxContainer.new()
+	entry.container.add_theme_constant_override("separation", 8)
+	
+	## Lock checkbox
+	entry.lock_button = CheckBox.new()
+	entry.lock_button.button_pressed = item_locked
+	entry.lock_button.tooltip_text = "Lock concentration"
+	entry.lock_button.toggled.connect(_on_lock_toggled.bind(item_id))
+	entry.container.add_child(entry.lock_button)
+	
+	## Name label
+	entry.name_label = Label.new()
+	entry.name_label.text = item_name
+	entry.name_label.custom_minimum_size = Vector2(90, 0)
+	entry.name_label.add_theme_font_size_override("font_size", 12)
+	entry.container.add_child(entry.name_label)
+	
+	## Slider
+	entry.slider = HSlider.new()
+	entry.slider.custom_minimum_size = Vector2(100, 0)
+	entry.slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	entry.slider.min_value = 0.0
+	entry.slider.max_value = _get_max_for_type(item_type)
+	entry.slider.step = 0.001
+	entry.slider.value = item_conc
+	entry.slider.editable = not item_locked
+	entry.slider.value_changed.connect(_on_slider_changed.bind(item_id))
+	entry.container.add_child(entry.slider)
+	
+	## Value label
+	entry.value_label = Label.new()
+	entry.value_label.text = "%.4f" % item_conc
+	entry.value_label.custom_minimum_size = Vector2(55, 0)
+	entry.value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	entry.value_label.add_theme_font_size_override("font_size", 11)
+	entry.container.add_child(entry.value_label)
+	
+	## Unit label
+	var unit_label = Label.new()
+	unit_label.text = "mM"
+	unit_label.add_theme_font_size_override("font_size", 11)
+	unit_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
+	entry.container.add_child(unit_label)
+	
+	## Info label
+	entry.info_label = Label.new()
+	entry.info_label.text = extra_info
+	entry.info_label.add_theme_font_size_override("font_size", 10)
+	entry.info_label.add_theme_color_override("font_color", Color(0.4, 0.4, 0.4))
+	entry.container.add_child(entry.info_label)
+	
+	add_child(entry.container)
+	item_entries[item_id] = entry
 
-## Update a specific control's value without emitting signal
-func update_value(item_name: String, new_value: float) -> void:
-	if _controls.has(item_name):
-		var ctrl = _controls[item_name]
-		ctrl.slider.set_value_no_signal(new_value)
-		_update_label(ctrl.label, item_name, new_value, ctrl.is_enzyme, ctrl.checkbox.button_pressed)
-
-## Batch update all molecule concentrations
-func update_molecules(molecules: Dictionary) -> void:
-	for mol_name in molecules:
-		if _controls.has(mol_name):
-			var mol = molecules[mol_name]
-			update_value(mol_name, mol.concentration)
-
-## Batch update all enzyme concentrations  
-func update_enzymes(enzymes: Array) -> void:
-	for enzyme in enzymes:
-		if _controls.has(enzyme.name):
-			update_value(enzyme.name, enzyme.concentration)
+func _get_max_for_type(item_type: String) -> float:
+	if item_type == "enzyme":
+		return 0.1  ## Enzymes typically in µM-mM range
+	else:
+		return 20.0  ## Metabolites can be higher
 
 #endregion
 
-#region Internal Methods
+#region Updates
 
-func _add_control(item_name: String, current_value: float, max_value: float, is_enzyme: bool, is_locked: bool) -> void:
-	var container = VBoxContainer.new()
-	container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	
-	## Header row with label and lock checkbox
-	var header = HBoxContainer.new()
-	header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	container.add_child(header)
-	
-	## Label showing name and current value
-	var label = Label.new()
-	label.add_theme_font_size_override("font_size", 12)
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_update_label(label, item_name, current_value, is_enzyme, is_locked)
-	header.add_child(label)
-	
-	## Lock checkbox
-	var checkbox = CheckBox.new()
-	checkbox.text = "🔒"
-	checkbox.button_pressed = is_locked
-	checkbox.tooltip_text = "Lock concentration (won't change during simulation)"
-	checkbox.toggled.connect(_on_lock_toggled.bind(item_name, is_enzyme))
-	header.add_child(checkbox)
-	
-	## Slider for adjustment
-	var slider = HSlider.new()
-	slider.min_value = MIN_CONCENTRATION
-	slider.max_value = max_value
-	slider.step = SLIDER_STEP
-	slider.value = current_value
-	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	slider.custom_minimum_size.y = 20
-	container.add_child(slider)
-	
-	## Connect signal
-	slider.value_changed.connect(_on_slider_changed.bind(item_name, label, checkbox, is_enzyme))
-	
-	## Separator
-	var sep = HSeparator.new()
-	sep.add_theme_constant_override("separation", 8)
-	container.add_child(sep)
-	
-	add_child(container)
-	
-	## Store reference
-	_controls[item_name] = {
-		"slider": slider,
-		"label": label,
-		"checkbox": checkbox,
-		"is_enzyme": is_enzyme,
-		"container": container
-	}
+func update_values(items: Array, item_type: String) -> void:
+	for item in items:
+		var item_id: String
+		var item_conc: float
+		var item_locked: bool
+		
+		if item_type == "enzyme":
+			item_id = item.id
+			item_conc = item.concentration
+			item_locked = item.is_locked
+		else:
+			item_id = item.name
+			item_conc = item.concentration
+			item_locked = item.is_locked
+		
+		if not item_entries.has(item_id):
+			continue
+		
+		var entry: ItemEntry = item_entries[item_id]
+		
+		## Update value label
+		entry.value_label.text = "%.4f" % item_conc
+		
+		## Update slider if not being dragged and not locked
+		if not entry.slider.has_focus() and not item_locked:
+			entry.slider.set_value_no_signal(item_conc)
 
-func _update_label(label: Label, item_name: String, value: float, is_enzyme: bool, is_locked: bool) -> void:
-	var lock_indicator = " 🔒" if is_locked else ""
-	if is_enzyme:
-		label.text = "🔷 %s: %.4f mM%s" % [item_name, value, lock_indicator]
-	else:
-		label.text = "🔹 %s: %.3f mM%s" % [item_name, value, lock_indicator]
+#endregion
 
-func _on_slider_changed(new_value: float, item_name: String, label: Label, checkbox: CheckBox, is_enzyme: bool) -> void:
-	_update_label(label, item_name, new_value, is_enzyme, checkbox.button_pressed)
-	concentration_changed.emit(item_name, new_value, is_enzyme)
+#region Callbacks
 
-func _on_lock_toggled(is_pressed: bool, item_name: String, is_enzyme: bool) -> void:
-	if _controls.has(item_name):
-		var ctrl = _controls[item_name]
-		_update_label(ctrl.label, item_name, ctrl.slider.value, is_enzyme, is_pressed)
-	lock_changed.emit(item_name, is_pressed, is_enzyme)
+func _on_slider_changed(value: float, item_id: String) -> void:
+	if item_entries.has(item_id):
+		item_entries[item_id].value_label.text = "%.4f" % value
+	concentration_changed.emit(item_id, value)
+
+func _on_lock_toggled(pressed: bool, item_id: String) -> void:
+	if item_entries.has(item_id):
+		item_entries[item_id].slider.editable = not pressed
+	lock_changed.emit(item_id, pressed)
 
 #endregion

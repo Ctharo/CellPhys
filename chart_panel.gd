@@ -1,565 +1,243 @@
-## Interactive chart panel with tab-based filtering and hover highlights
+## Real-time chart panel for plotting concentration histories
+## Uses custom drawing for performance
 class_name ChartPanel
 extends Panel
 
-#region Chart Mode
-
-enum ChartMode {
-	CELL,       ## Energy and heat over time
-	ENZYMES,    ## Enzyme concentrations
-	MOLECULES,  ## Molecule concentrations
-	REACTIONS   ## Reaction rates
-}
-
-var current_mode: ChartMode = ChartMode.MOLECULES
-
-#endregion
-
 #region Configuration
 
-const MAX_HISTORY_POINTS: int = 200
-const SAMPLE_INTERVAL: float = 0.1
-const CHART_COLORS: Array[Color] = [
-	Color(0.3, 0.8, 0.3),   ## Green
-	Color(0.3, 0.6, 0.9),   ## Blue  
-	Color(0.9, 0.5, 0.3),   ## Orange
-	Color(0.8, 0.3, 0.8),   ## Purple
-	Color(0.9, 0.9, 0.3),   ## Yellow
-	Color(0.3, 0.9, 0.9),   ## Cyan
-	Color(0.9, 0.3, 0.5),   ## Pink
-	Color(0.6, 0.6, 0.6),   ## Gray
-	Color(0.5, 0.8, 0.5),   ## Light green
-	Color(0.5, 0.5, 0.9),   ## Light blue
+@export var background_color: Color = Color(0.1, 0.1, 0.12)
+@export var grid_color: Color = Color(0.2, 0.2, 0.25)
+@export var axis_color: Color = Color(0.4, 0.4, 0.45)
+@export var margin: Vector2 = Vector2(50, 30)
+
+#endregion
+
+#region Chart State
+
+var time_data: Array = []
+var series_data: Dictionary = {}  ## {name: Array[float]}
+var y_min: float = 0.0
+var y_max: float = 10.0
+var auto_scale: bool = true
+
+## Color palette for series
+var series_colors: Array[Color] = [
+	Color(0.2, 0.6, 1.0),   ## Blue
+	Color(1.0, 0.4, 0.3),   ## Red
+	Color(0.3, 0.9, 0.4),   ## Green
+	Color(1.0, 0.8, 0.2),   ## Yellow
+	Color(0.8, 0.4, 1.0),   ## Purple
+	Color(1.0, 0.6, 0.2),   ## Orange
+	Color(0.4, 0.9, 0.9),   ## Cyan
+	Color(1.0, 0.5, 0.7),   ## Pink
+	Color(0.6, 0.8, 0.4),   ## Lime
+	Color(0.9, 0.5, 0.5),   ## Salmon
 ]
 
-const HIGHLIGHT_COLOR: Color = Color(1.0, 1.0, 1.0, 0.9)
-const LINE_WIDTH: float = 2.0
-const HIGHLIGHT_LINE_WIDTH: float = 4.0
+var color_assignments: Dictionary = {}  ## {series_name: color_index}
 
 #endregion
 
-#region State
-
-## History data per mode
-var molecule_history: Dictionary = {}   ## {mol_name: Array[float]}
-var enzyme_history: Dictionary = {}     ## {enz_name: Array[float]}
-var reaction_history: Dictionary = {}   ## {rxn_id: Array[float]}
-var cell_history: Dictionary = {        ## Fixed keys for cell data
-	"energy": [],
-	"heat": [],
-	"generated": [],
-	"consumed": []
-}
-
-var time_history: Array[float] = []
-var sample_timer: float = 0.0
-
-## Scale state
-var auto_scale: bool = true
-var min_y_value: float = 0.0
-var max_y_value: float = 10.0
-var manual_min: float = 0.0
-var manual_max: float = 10.0
-
-## Hover state
-var hovered_item: String = ""
-var legend_items: Array[Dictionary] = []  ## [{name, color, rect}]
-var line_hitboxes: Dictionary = {}        ## {name: Array[Rect2]}
-
-#endregion
+#region Initialization
 
 func _ready() -> void:
-	mouse_filter = Control.MOUSE_FILTER_PASS
-
-func _process(delta: float) -> void:
-	sample_timer += delta
-	if sample_timer >= SAMPLE_INTERVAL:
-		sample_timer = 0.0
-		_sample_data()
-	queue_redraw()
-
-func _input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion:
-		_update_hover(event.position)
+	pass
 
 func _draw() -> void:
 	var rect = get_rect()
-	var margin = 50.0
-	var legend_width = 140.0
 	var chart_rect = Rect2(
-		margin, margin,
-		rect.size.x - margin - legend_width - 20,
-		rect.size.y - margin * 2
+		margin.x, margin.y,
+		rect.size.x - margin.x * 2,
+		rect.size.y - margin.y * 2
 	)
 	
-	## Clear hover data
-	legend_items.clear()
-	line_hitboxes.clear()
+	## Background
+	draw_rect(Rect2(Vector2.ZERO, rect.size), background_color)
 	
-	## Draw background
-	draw_rect(chart_rect, Color(0.08, 0.08, 0.1))
-	
-	## Draw grid
+	## Grid
 	_draw_grid(chart_rect)
 	
-	## Get data for current mode
-	var data = _get_current_data()
+	## Axes
+	_draw_axes(chart_rect)
 	
-	## Calculate max value
-	_calculate_max_value(data)
+	## Series
+	_draw_series(chart_rect)
 	
-	## Draw lines
-	_draw_data_lines(chart_rect, data)
-	
-	## Draw legend
-	var legend_rect = Rect2(
-		chart_rect.end.x + 10,
-		chart_rect.position.y,
-		legend_width,
-		chart_rect.size.y
-	)
-	_draw_legend(legend_rect, data)
-	
-	## Draw axes labels
-	_draw_axes_labels(chart_rect)
-	
-	## Draw title
-	_draw_title(chart_rect)
-
-#region Public API
-
-func set_mode(mode: ChartMode) -> void:
-	current_mode = mode
-	hovered_item = ""
-	queue_redraw()
-
-func set_auto_scale(enabled: bool) -> void:
-	auto_scale = enabled
-	queue_redraw()
-
-func set_manual_scale(min_val: float, max_val: float) -> void:
-	manual_min = min_val
-	manual_max = max(max_val, min_val + 0.1)  ## Ensure max > min
-	queue_redraw()
-
-func clear_history() -> void:
-	molecule_history.clear()
-	enzyme_history.clear()
-	reaction_history.clear()
-	cell_history = {"energy": [], "heat": [], "generated": [], "consumed": []}
-	time_history.clear()
-	min_y_value = 0.0
-	max_y_value = 10.0
-
-#endregion
-
-#region Data Sampling
-
-func _sample_data() -> void:
-	var sim = _get_simulator()
-	if not sim:
-		return
-	
-	time_history.append(sim.simulation_time)
-	if time_history.size() > MAX_HISTORY_POINTS:
-		time_history.pop_front()
-	
-	## Sample molecules
-	for mol_name in sim.molecules:
-		if not molecule_history.has(mol_name):
-			molecule_history[mol_name] = []
-		molecule_history[mol_name].append(sim.molecules[mol_name].concentration)
-		if molecule_history[mol_name].size() > MAX_HISTORY_POINTS:
-			molecule_history[mol_name].pop_front()
-	
-	## Sample enzymes
-	for enzyme in sim.enzymes:
-		if not enzyme_history.has(enzyme.name):
-			enzyme_history[enzyme.name] = []
-		enzyme_history[enzyme.name].append(enzyme.concentration)
-		if enzyme_history[enzyme.name].size() > MAX_HISTORY_POINTS:
-			enzyme_history[enzyme.name].pop_front()
-	
-	## Sample reactions
-	for enzyme in sim.enzymes:
-		for rxn in enzyme.reactions:
-			if not reaction_history.has(rxn.id):
-				reaction_history[rxn.id] = []
-			reaction_history[rxn.id].append(rxn.get_net_rate())
-			if reaction_history[rxn.id].size() > MAX_HISTORY_POINTS:
-				reaction_history[rxn.id].pop_front()
-	
-	## Sample cell data
-	if sim.cell:
-		var energy = sim.cell.get_energy_status()
-		cell_history["energy"].append(energy.usable_energy)
-		cell_history["heat"].append(sim.cell.heat)
-		cell_history["generated"].append(energy.total_generated)
-		cell_history["consumed"].append(energy.total_consumed)
-		
-		for key in cell_history:
-			if cell_history[key].size() > MAX_HISTORY_POINTS:
-				cell_history[key].pop_front()
-
-func _get_simulator() -> Simulator:
-	var owner_node = get_owner()
-	if owner_node and owner_node.has_node("SimEngine"):
-		return owner_node.get_node("SimEngine") as Simulator
-	return null
-
-#endregion
-
-#region Data Access
-
-func _get_current_data() -> Dictionary:
-	match current_mode:
-		ChartMode.CELL:
-			return cell_history
-		ChartMode.ENZYMES:
-			return enzyme_history
-		ChartMode.MOLECULES:
-			return molecule_history
-		ChartMode.REACTIONS:
-			return reaction_history
-	return {}
-
-func _calculate_max_value(data: Dictionary) -> void:
-	if not auto_scale:
-		## Use manual values
-		min_y_value = manual_min
-		max_y_value = manual_max
-		return
-	
-	## Auto-scale: find actual min and max from data
-	var data_min: float = 0.0
-	var data_max: float = 1.0
-	var has_data: bool = false
-	
-	for key in data:
-		var history = data[key]
-		for value in history:
-			if not has_data:
-				data_min = value
-				data_max = value
-				has_data = true
-			else:
-				data_min = min(data_min, value)
-				data_max = max(data_max, value)
-	
-	if not has_data:
-		min_y_value = 0.0
-		max_y_value = 10.0
-		return
-	
-	## Add padding (10% on each side)
-	var data_range = data_max - data_min
-	if data_range < 0.001:
-		data_range = 1.0  ## Avoid zero range
-	
-	var padding = data_range * 0.1
-	
-	## For most modes, keep min at 0 if all values are positive
-	if data_min >= 0:
-		min_y_value = 0.0
-		max_y_value = data_max + padding
-	else:
-		## Allow negative values (e.g., for reaction rates)
-		min_y_value = data_min - padding
-		max_y_value = data_max + padding
-	
+	## Legend
+	_draw_legend(chart_rect)
 
 #endregion
 
 #region Drawing
 
 func _draw_grid(chart_rect: Rect2) -> void:
-	var grid_color = Color(0.25, 0.25, 0.3, 0.5)
+	var num_horizontal = 5
+	var num_vertical = 8
 	
-	## Horizontal lines
-	for i in range(5):
-		var y = chart_rect.position.y + chart_rect.size.y * (1.0 - i / 4.0)
+	## Horizontal grid lines
+	for i in range(num_horizontal + 1):
+		var y = chart_rect.position.y + chart_rect.size.y * (1.0 - float(i) / num_horizontal)
 		draw_line(
 			Vector2(chart_rect.position.x, y),
-			Vector2(chart_rect.end.x, y),
-			grid_color
+			Vector2(chart_rect.position.x + chart_rect.size.x, y),
+			grid_color, 1.0
 		)
 	
-	## Vertical lines
-	for i in range(5):
-		var x = chart_rect.position.x + chart_rect.size.x * (i / 4.0)
+	## Vertical grid lines
+	for i in range(num_vertical + 1):
+		var x = chart_rect.position.x + chart_rect.size.x * float(i) / num_vertical
 		draw_line(
 			Vector2(x, chart_rect.position.y),
-			Vector2(x, chart_rect.end.y),
-			grid_color
-		)
-	
-	## Draw zero line if range crosses zero
-	if min_y_value < 0 and max_y_value > 0:
-		var y_range = max_y_value - min_y_value
-		var zero_normalized = (0.0 - min_y_value) / y_range
-		var zero_y = chart_rect.end.y - zero_normalized * chart_rect.size.y
-		draw_line(
-			Vector2(chart_rect.position.x, zero_y),
-			Vector2(chart_rect.end.x, zero_y),
-			Color(0.5, 0.5, 0.6, 0.8),
-			2.0
+			Vector2(x, chart_rect.position.y + chart_rect.size.y),
+			grid_color, 1.0
 		)
 
-func _draw_data_lines(chart_rect: Rect2, data: Dictionary) -> void:
-	if time_history.is_empty():
-		return
+func _draw_axes(chart_rect: Rect2) -> void:
+	## Y-axis
+	draw_line(
+		chart_rect.position,
+		Vector2(chart_rect.position.x, chart_rect.position.y + chart_rect.size.y),
+		axis_color, 2.0
+	)
 	
-	var y_range = max_y_value - min_y_value
-	if y_range < 0.001:
-		y_range = 1.0
-	
-	var color_index = 0
-	for item_name in data:
-		var history = data[item_name]
-		if history.size() < 2:
-			color_index += 1
-			continue
-		
-		var base_color = CHART_COLORS[color_index % CHART_COLORS.size()]
-		var is_highlighted = (item_name == hovered_item)
-		var color = HIGHLIGHT_COLOR if is_highlighted else base_color
-		var width = HIGHLIGHT_LINE_WIDTH if is_highlighted else LINE_WIDTH
-		
-		var points: PackedVector2Array = []
-		var hitbox_points: Array[Vector2] = []
-		
-		for i in range(history.size()):
-			var x = chart_rect.position.x + (float(i) / max(history.size() - 1, 1)) * chart_rect.size.x
-			var normalized_y = (history[i] - min_y_value) / y_range
-			var y = chart_rect.end.y - normalized_y * chart_rect.size.y
-			y = clamp(y, chart_rect.position.y, chart_rect.end.y)
-			points.append(Vector2(x, y))
-			hitbox_points.append(Vector2(x, y))
-		
-		## Store hitbox for hover detection
-		line_hitboxes[item_name] = hitbox_points
-		
-		## Draw line (highlighted items drawn last/on top via z-order hack)
-		if not is_highlighted:
-			if points.size() >= 2:
-				draw_polyline(points, color, width, true)
-		
-		color_index += 1
-	
-	## Draw highlighted line on top
-	if hovered_item != "" and data.has(hovered_item):
-		var history = data[hovered_item]
-		if history.size() >= 2:
-			var points: PackedVector2Array = []
-			for i in range(history.size()):
-				var x = chart_rect.position.x + (float(i) / max(history.size() - 1, 1)) * chart_rect.size.x
-				var normalized_y = (history[i] - min_y_value) / y_range
-				var y = chart_rect.end.y - normalized_y * chart_rect.size.y
-				y = clamp(y, chart_rect.position.y, chart_rect.end.y)
-				points.append(Vector2(x, y))
-			draw_polyline(points, HIGHLIGHT_COLOR, HIGHLIGHT_LINE_WIDTH, true)
-
-func _draw_legend(legend_rect: Rect2, data: Dictionary) -> void:
-	var font = ThemeDB.fallback_font
-	var font_size = 11
-	var line_height = 20
-	var y_offset = 0
-	var color_index = 0
-	
-	## Background
-	draw_rect(legend_rect, Color(0.1, 0.1, 0.12, 0.8))
-	
-	for item_name in data:
-		if y_offset > legend_rect.size.y - line_height:
-			## Draw "more items" indicator
-			draw_string(
-				font,
-				Vector2(legend_rect.position.x + 5, legend_rect.position.y + y_offset + 14),
-				"... +%d more" % (data.size() - color_index),
-				HORIZONTAL_ALIGNMENT_LEFT,
-				-1,
-				font_size,
-				Color(0.6, 0.6, 0.6)
-			)
-			break
-		
-		var base_color = CHART_COLORS[color_index % CHART_COLORS.size()]
-		var is_highlighted = (item_name == hovered_item)
-		var color = HIGHLIGHT_COLOR if is_highlighted else base_color
-		var text_color = Color(1.0, 1.0, 1.0) if is_highlighted else Color(0.8, 0.8, 0.8)
-		
-		var item_y = legend_rect.position.y + y_offset
-		
-		## Color swatch
-		var swatch_rect = Rect2(legend_rect.position.x + 5, item_y + 4, 14, 14)
-		draw_rect(swatch_rect, color)
-		if is_highlighted:
-			draw_rect(swatch_rect, Color.WHITE, false, 2.0)
-		
-		## Name (truncated)
-		var display_name = _get_display_name(item_name)
-		draw_string(
-			font,
-			Vector2(legend_rect.position.x + 24, item_y + 14),
-			display_name,
-			HORIZONTAL_ALIGNMENT_LEFT,
-			int(legend_rect.size.x - 30),
-			font_size,
-			text_color
-		)
-		
-		## Store legend item rect for hover detection
-		var item_rect = Rect2(
-			legend_rect.position.x,
-			item_y,
-			legend_rect.size.x,
-			line_height
-		)
-		legend_items.append({
-			"name": item_name,
-			"color": base_color,
-			"rect": item_rect
-		})
-		
-		y_offset += line_height
-		color_index += 1
-
-func _get_display_name(item_name: String) -> String:
-	## Shorten long names
-	if item_name.length() > 14:
-		return item_name.substr(0, 12) + ".."
-	return item_name
-
-func _draw_axes_labels(chart_rect: Rect2) -> void:
-	var font = ThemeDB.fallback_font
-	var font_size = 10
-	var label_color = Color(0.65, 0.65, 0.7)
-	
-	var y_range = max_y_value - min_y_value
+	## X-axis
+	draw_line(
+		Vector2(chart_rect.position.x, chart_rect.position.y + chart_rect.size.y),
+		Vector2(chart_rect.position.x + chart_rect.size.x, chart_rect.position.y + chart_rect.size.y),
+		axis_color, 2.0
+	)
 	
 	## Y-axis labels
-	for i in range(5):
-		var value = min_y_value + y_range * (i / 4.0)
-		var y = chart_rect.end.y - chart_rect.size.y * (i / 4.0)
-		var format_str = "%.2f" if abs(value) < 1 else ("%.1f" if abs(value) < 10 else "%.0f")
-		draw_string(
-			font,
-			Vector2(5, y + 4),
-			format_str % value,
-			HORIZONTAL_ALIGNMENT_LEFT,
-			-1,
-			font_size,
-			label_color
-		)
-	
-	## X-axis label
-	draw_string(
-		font,
-		Vector2(chart_rect.position.x + chart_rect.size.x / 2 - 25, chart_rect.end.y + 30),
-		"Time (s)",
-		HORIZONTAL_ALIGNMENT_CENTER,
-		-1,
-		font_size,
-		label_color
-	)
-	
-	## Y-axis unit label
-	var unit = _get_y_axis_unit()
-	draw_string(
-		font,
-		Vector2(5, chart_rect.position.y - 8),
-		unit,
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1,
-		font_size,
-		label_color
-	)
-
-func _get_y_axis_unit() -> String:
-	match current_mode:
-		ChartMode.CELL:
-			return "[kJ]"
-		ChartMode.ENZYMES:
-			return "[mM]"
-		ChartMode.MOLECULES:
-			return "[mM]"
-		ChartMode.REACTIONS:
-			return "[mM/s]"
-	return ""
-
-func _draw_title(chart_rect: Rect2) -> void:
+	var num_labels = 5
 	var font = ThemeDB.fallback_font
-	var title = _get_chart_title()
-	draw_string(
-		font,
-		Vector2(chart_rect.position.x, 20),
-		title,
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1,
-		14,
-		Color(0.9, 0.9, 0.95)
-	)
+	var font_size = 10
+	
+	for i in range(num_labels + 1):
+		var value = y_min + (y_max - y_min) * float(i) / num_labels
+		var y = chart_rect.position.y + chart_rect.size.y * (1.0 - float(i) / num_labels)
+		var label = _format_value(value)
+		draw_string(font, Vector2(5, y + 4), label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, axis_color)
 
-func _get_chart_title() -> String:
-	match current_mode:
-		ChartMode.CELL:
-			return "📊 Cell Energy & Heat"
-		ChartMode.ENZYMES:
-			return "📊 Enzyme Concentrations"
-		ChartMode.MOLECULES:
-			return "📊 Molecule Concentrations"
-		ChartMode.REACTIONS:
-			return "📊 Reaction Rates"
-	return "📊 Chart"
+func _draw_series(chart_rect: Rect2) -> void:
+	if time_data.is_empty():
+		return
+	
+	var y_range = y_max - y_min
+	if y_range <= 0:
+		y_range = 1.0
+	
+	for series_name in series_data:
+		var data: Array = series_data[series_name]
+		if data.size() < 2:
+			continue
+		
+		var color = _get_series_color(series_name)
+		var points: PackedVector2Array = []
+		
+		for i in range(data.size()):
+			var x = chart_rect.position.x + chart_rect.size.x * float(i) / (data.size() - 1)
+			var normalized_y = (data[i] - y_min) / y_range
+			var y = chart_rect.position.y + chart_rect.size.y * (1.0 - normalized_y)
+			y = clampf(y, chart_rect.position.y, chart_rect.position.y + chart_rect.size.y)
+			points.append(Vector2(x, y))
+		
+		if points.size() >= 2:
+			draw_polyline(points, color, 2.0, true)
+
+func _draw_legend(chart_rect: Rect2) -> void:
+	if series_data.is_empty():
+		return
+	
+	var font = ThemeDB.fallback_font
+	var font_size = 10
+	var line_height = 14
+	var legend_x = chart_rect.position.x + chart_rect.size.x - 100
+	var legend_y = chart_rect.position.y + 10
+	
+	var idx = 0
+	for series_name in series_data:
+		var color = _get_series_color(series_name)
+		var y = legend_y + idx * line_height
+		
+		## Color swatch
+		draw_rect(Rect2(legend_x, y - 8, 12, 10), color)
+		
+		## Name (truncated)
+		var display_name = series_name
+		if display_name.length() > 10:
+			display_name = display_name.substr(0, 8) + ".."
+		draw_string(font, Vector2(legend_x + 16, y), display_name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.WHITE)
+		
+		idx += 1
+		if idx >= 10:  ## Max 10 in legend
+			break
+
+func _get_series_color(series_name: String) -> Color:
+	if not color_assignments.has(series_name):
+		color_assignments[series_name] = color_assignments.size() % series_colors.size()
+	return series_colors[color_assignments[series_name]]
+
+func _format_value(value: float) -> String:
+	if abs(value) < 0.001:
+		return "%.0e" % value
+	elif abs(value) < 1.0:
+		return "%.3f" % value
+	elif abs(value) < 100.0:
+		return "%.1f" % value
+	else:
+		return "%.0f" % value
 
 #endregion
 
-#region Hover Detection
+#region Public Interface
 
-func _update_hover(mouse_pos: Vector2) -> void:
-	var local_pos = mouse_pos - global_position
-	var old_hover = hovered_item
-	hovered_item = ""
+func update_chart(data: Dictionary, use_auto_scale: bool = true) -> void:
+	time_data = data.get("time", [])
+	series_data = data.get("series", {})
+	auto_scale = use_auto_scale
 	
-	## Check legend items first
-	for item in legend_items:
-		if item.rect.has_point(local_pos):
-			hovered_item = item.name
-			break
+	if auto_scale:
+		_calculate_auto_scale()
 	
-	## If not hovering legend, check line proximity
-	if hovered_item == "":
-		var closest_distance = 15.0  ## Max distance to consider hovering
-		for item_name in line_hitboxes:
-			var points = line_hitboxes[item_name]
-			var dist = _distance_to_polyline(local_pos, points)
-			if dist < closest_distance:
-				closest_distance = dist
-				hovered_item = item_name
-	
-	if old_hover != hovered_item:
-		queue_redraw()
+	queue_redraw()
 
-func _distance_to_polyline(point: Vector2, polyline: Array) -> float:
-	var min_dist = INF
-	for i in range(polyline.size() - 1):
-		var dist = _distance_to_segment(point, polyline[i], polyline[i + 1])
-		min_dist = min(min_dist, dist)
-	return min_dist
+func set_y_range(min_val: float, max_val: float) -> void:
+	y_min = min_val
+	y_max = max_val
+	auto_scale = false
+	queue_redraw()
 
-func _distance_to_segment(point: Vector2, seg_start: Vector2, seg_end: Vector2) -> float:
-	var line_vec = seg_end - seg_start
-	var point_vec = point - seg_start
-	var line_len = line_vec.length()
+func _calculate_auto_scale() -> void:
+	var all_values: Array[float] = []
 	
-	if line_len < 0.001:
-		return point_vec.length()
+	for series_name in series_data:
+		for val in series_data[series_name]:
+			all_values.append(val)
 	
-	var line_unitvec = line_vec / line_len
-	var proj_length = point_vec.dot(line_unitvec)
-	proj_length = clamp(proj_length, 0, line_len)
+	if all_values.is_empty():
+		y_min = 0.0
+		y_max = 10.0
+		return
 	
-	var closest_point = seg_start + line_unitvec * proj_length
-	return (point - closest_point).length()
+	var min_val = all_values.min()
+	var max_val = all_values.max()
+	
+	## Add padding
+	var range_val = max_val - min_val
+	if range_val < 0.001:
+		range_val = max_val * 0.2 if max_val > 0 else 1.0
+	
+	y_min = max(0.0, min_val - range_val * 0.1)
+	y_max = max_val + range_val * 0.1
+	
+	## Ensure minimum range
+	if y_max - y_min < 0.001:
+		y_max = y_min + 1.0
+
+func clear() -> void:
+	time_data.clear()
+	series_data.clear()
+	color_assignments.clear()
+	queue_redraw()
 
 #endregion
