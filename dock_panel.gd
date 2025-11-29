@@ -3,6 +3,7 @@ class_name DockPanel
 extends PanelContainer
 
 signal collapse_changed(panel_name: String, is_collapsed: bool)
+signal panel_visibility_changed(panel_name: String, is_visible: bool)
 
 @export var panel_title: String = "Panel"
 @export var panel_icon: String = "📊"
@@ -62,11 +63,11 @@ func _on_collapse_pressed() -> void:
 
 func show_panel() -> void:
 	show()
-	visibility_changed.emit(panel_name, true)
+	panel_visibility_changed.emit(panel_name, true)
 
 func hide_panel() -> void:
 	hide()
-	visibility_changed.emit(panel_name, false)
+	panel_visibility_changed.emit(panel_name, false)
 
 func _on_close_pressed() -> void:
 	hide_panel()

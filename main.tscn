@@ -1,8 +1,11 @@
-[gd_scene load_steps=5 format=3 uid="uid://cro6fq6thlcea"]
+[gd_scene load_steps=6 format=3 uid="uid://cro6fq6thlcea"]
 
 [ext_resource type="Script" uid="uid://buw4t1x75eok5" path="res://ui.gd" id="1_ui"]
 [ext_resource type="Script" uid="uid://jkoy5w1wdlvj" path="res://simulator.gd" id="2_sim"]
 [ext_resource type="PackedScene" path="res://dock_panel.tscn" id="3_dock"]
+[ext_resource type="Script" path="res://concentration_panel.gd" id="4_conc"]
+[ext_resource type="Script" path="res://gene_panel.gd" id="5_gene"]
+[ext_resource type="Script" path="res://chart_panel.gd" id="6_chart"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_toolbar"]
 content_margin_left = 10.0
@@ -163,12 +166,28 @@ layout_mode = 2
 panel_title = "Cell Status"
 panel_name = "cell"
 
+[node name="CellContent" type="RichTextLabel" parent="VBox/MainArea/HSplit1/LeftColumn/CellPanel/VBox/ContentMargin/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+
 [node name="ReactionsPanel" parent="VBox/MainArea/HSplit1/LeftColumn" unique_id=1572994989 instance=ExtResource("3_dock")]
 unique_name_in_owner = true
 layout_mode = 2
 panel_title = "Reactions"
 panel_icon = "⚗️"
 panel_name = "reactions"
+
+[node name="ReactionsContent" type="RichTextLabel" parent="VBox/MainArea/HSplit1/LeftColumn/ReactionsPanel/VBox/ContentMargin/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 
 [node name="HSplit2" type="HSplitContainer" parent="VBox/MainArea/HSplit1" unique_id=1389779980]
 unique_name_in_owner = true
@@ -188,12 +207,24 @@ panel_title = "Enzymes"
 panel_icon = "🔬"
 panel_name = "enzymes"
 
+[node name="EnzymePanel" type="VBoxContainer" parent="VBox/MainArea/HSplit1/HSplit2/MiddleColumn/EnzymesPanel/VBox/ContentMargin/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+script = ExtResource("4_conc")
+
 [node name="MoleculesPanel" parent="VBox/MainArea/HSplit1/HSplit2/MiddleColumn" unique_id=1647046691 instance=ExtResource("3_dock")]
 unique_name_in_owner = true
 layout_mode = 2
 panel_title = "Molecules"
 panel_icon = "🧪"
 panel_name = "molecules"
+
+[node name="MoleculePanel" type="VBoxContainer" parent="VBox/MainArea/HSplit1/HSplit2/MiddleColumn/MoleculesPanel/VBox/ContentMargin/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+script = ExtResource("4_conc")
 
 [node name="RightColumn" type="VSplitContainer" parent="VBox/MainArea/HSplit1/HSplit2" unique_id=2104801850]
 unique_name_in_owner = true
@@ -209,6 +240,12 @@ panel_title = "Gene Expression"
 panel_icon = "🧬"
 panel_name = "genes"
 
+[node name="GenePanel" type="VBoxContainer" parent="VBox/MainArea/HSplit1/HSplit2/RightColumn/GenesPanel/VBox/ContentMargin/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+script = ExtResource("5_gene")
+
 [node name="ChartDock" parent="VBox/MainArea/HSplit1/HSplit2/RightColumn" unique_id=2114877813 instance=ExtResource("3_dock")]
 unique_name_in_owner = true
 layout_mode = 2
@@ -217,15 +254,27 @@ panel_icon = "📈"
 panel_name = "chart"
 can_collapse = false
 
+[node name="ChartPanel" type="Panel" parent="VBox/MainArea/HSplit1/HSplit2/RightColumn/ChartDock/VBox/ContentMargin/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 200)
+layout_mode = 2
+size_flags_vertical = 3
+script = ExtResource("6_chart")
+
 [connection signal="pressed" from="VBox/Toolbar/HBox/PauseButton" to="." method="_on_pause_pressed"]
 [connection signal="pressed" from="VBox/Toolbar/HBox/ResetButton" to="." method="_on_reset_pressed"]
 [connection signal="value_changed" from="VBox/Toolbar/HBox/SpeedSlider" to="." method="_on_speed_changed"]
 [connection signal="item_selected" from="VBox/Toolbar/HBox/LayoutOption" to="." method="_on_layout_selected"]
 [connection signal="item_selected" from="VBox/Toolbar/HBox/ChartModeOption" to="." method="_on_chart_mode_changed"]
 [connection signal="toggled" from="VBox/Toolbar/HBox/AutoScaleCheck" to="." method="_on_auto_scale_toggled"]
-[connection signal="visibility_changed" from="VBox/MainArea/HSplit1/LeftColumn/CellPanel" to="." method="_on_panel_visibility_changed"]
-[connection signal="visibility_changed" from="VBox/MainArea/HSplit1/LeftColumn/ReactionsPanel" to="." method="_on_panel_visibility_changed"]
-[connection signal="visibility_changed" from="VBox/MainArea/HSplit1/HSplit2/MiddleColumn/EnzymesPanel" to="." method="_on_panel_visibility_changed"]
-[connection signal="visibility_changed" from="VBox/MainArea/HSplit1/HSplit2/MiddleColumn/MoleculesPanel" to="." method="_on_panel_visibility_changed"]
-[connection signal="visibility_changed" from="VBox/MainArea/HSplit1/HSplit2/RightColumn/GenesPanel" to="." method="_on_panel_visibility_changed"]
-[connection signal="visibility_changed" from="VBox/MainArea/HSplit1/HSplit2/RightColumn/ChartDock" to="." method="_on_panel_visibility_changed"]
+[connection signal="panel_visibility_changed" from="VBox/MainArea/HSplit1/LeftColumn/CellPanel" to="." method="_on_panel_visibility_changed"]
+[connection signal="panel_visibility_changed" from="VBox/MainArea/HSplit1/LeftColumn/ReactionsPanel" to="." method="_on_panel_visibility_changed"]
+[connection signal="panel_visibility_changed" from="VBox/MainArea/HSplit1/HSplit2/MiddleColumn/EnzymesPanel" to="." method="_on_panel_visibility_changed"]
+[connection signal="panel_visibility_changed" from="VBox/MainArea/HSplit1/HSplit2/MiddleColumn/MoleculesPanel" to="." method="_on_panel_visibility_changed"]
+[connection signal="panel_visibility_changed" from="VBox/MainArea/HSplit1/HSplit2/RightColumn/GenesPanel" to="." method="_on_panel_visibility_changed"]
+[connection signal="panel_visibility_changed" from="VBox/MainArea/HSplit1/HSplit2/RightColumn/ChartDock" to="." method="_on_panel_visibility_changed"]
+[connection signal="concentration_changed" from="VBox/MainArea/HSplit1/HSplit2/MiddleColumn/EnzymesPanel/VBox/ContentMargin/Content/EnzymePanel" to="." method="_on_enzyme_concentration_changed"]
+[connection signal="lock_changed" from="VBox/MainArea/HSplit1/HSplit2/MiddleColumn/EnzymesPanel/VBox/ContentMargin/Content/EnzymePanel" to="." method="_on_enzyme_lock_changed"]
+[connection signal="concentration_changed" from="VBox/MainArea/HSplit1/HSplit2/MiddleColumn/MoleculesPanel/VBox/ContentMargin/Content/MoleculePanel" to="." method="_on_molecule_concentration_changed"]
+[connection signal="lock_changed" from="VBox/MainArea/HSplit1/HSplit2/MiddleColumn/MoleculesPanel/VBox/ContentMargin/Content/MoleculePanel" to="." method="_on_molecule_lock_changed"]
+[connection signal="gene_toggled" from="VBox/MainArea/HSplit1/HSplit2/RightColumn/GenesPanel/VBox/ContentMargin/Content/GenePanel" to="." method="_on_gene_toggled"]

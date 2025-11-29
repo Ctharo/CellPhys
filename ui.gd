@@ -76,8 +76,7 @@ func _ready() -> void:
 	await get_tree().process_frame
 	
 	_connect_signals()
-	_setup_panels()
-
+	call_deferred("_setup_panels")
 func _setup_view_menu() -> void:
 	var popup = view_menu.get_popup()
 	popup.clear()
