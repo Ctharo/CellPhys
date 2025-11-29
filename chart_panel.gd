@@ -179,7 +179,7 @@ func _get_series_color(series_name: String) -> Color:
 
 func _format_value(value: float) -> String:
 	if abs(value) < 0.001:
-		return "%.0e" % value
+		return "%.0f" % value
 	elif abs(value) < 1.0:
 		return "%.3f" % value
 	elif abs(value) < 100.0:
