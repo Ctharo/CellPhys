@@ -1,4 +1,5 @@
 ## Main UI controller - handles logic for scene-based layout
+## Uses reactive signal-based architecture for real-time updates
 extends Control
 
 #region Enums
@@ -21,6 +22,16 @@ enum ChartMode { MOLECULES, ENZYMES, BOTH }
 @onready var view_menu: MenuButton = %ViewMenu
 @onready var chart_mode_option: OptionButton = %ChartModeOption
 @onready var auto_scale_check: CheckBox = %AutoScaleCheck
+
+## Category lock toggles
+@onready var lock_molecules_btn: CheckButton = %LockMoleculesBtn
+@onready var lock_enzymes_btn: CheckButton = %LockEnzymesBtn
+@onready var lock_genes_btn: CheckButton = %LockGenesBtn
+@onready var lock_reactions_btn: CheckButton = %LockReactionsBtn
+@onready var lock_mutations_btn: CheckButton = %LockMutationsBtn
+@onready var isolate_option: OptionButton = %IsolateOption
+@onready var mutation_rate_slider: HSlider = %MutationRateSlider
+@onready var mutation_rate_label: Label = %MutationRateLabel
 
 ## Main layout
 @onready var main_area: Control = %MainArea
@@ -71,12 +82,15 @@ var all_docks: Array[DockPanel] = []
 
 func _ready() -> void:
 	_setup_view_menu()
+	_setup_isolate_menu()
 	_cache_docks()
 	
 	await get_tree().process_frame
 	
 	_connect_signals()
-	call_deferred("_setup_panels")
+	_setup_panels()
+	_sync_lock_buttons()
+
 func _setup_view_menu() -> void:
 	var popup = view_menu.get_popup()
 	popup.clear()
@@ -95,14 +109,60 @@ func _setup_view_menu() -> void:
 	
 	popup.id_pressed.connect(_on_view_menu_pressed)
 
+func _setup_isolate_menu() -> void:
+	if not isolate_option:
+		return
+	isolate_option.clear()
+	isolate_option.add_item("Run All", 0)
+	isolate_option.add_separator()
+	isolate_option.add_item("Test Molecules", 1)
+	isolate_option.add_item("Test Enzymes", 2)
+	isolate_option.add_item("Test Genes", 3)
+	isolate_option.add_item("Test Reactions", 4)
+	isolate_option.add_item("Test Mutations", 5)
+	isolate_option.add_separator()
+	isolate_option.add_item("Lock All", 6)
+
 func _cache_docks() -> void:
 	all_docks = [cell_dock, reactions_dock, enzymes_dock, molecules_dock, genes_dock, chart_dock]
 
 func _connect_signals() -> void:
-	if sim_engine:
-		sim_engine.simulation_updated.connect(_on_simulation_updated)
+	if not sim_engine:
+		return
 	
+	## Main simulation update (for chart and bulk updates)
+	sim_engine.simulation_updated.connect(_on_simulation_updated)
+	
+	## Category lock signals (reactive UI updates)
+	sim_engine.molecules_lock_changed.connect(_on_molecules_lock_changed)
+	sim_engine.enzymes_lock_changed.connect(_on_enzymes_lock_changed)
+	sim_engine.genes_lock_changed.connect(_on_genes_lock_changed)
+	sim_engine.reactions_lock_changed.connect(_on_reactions_lock_changed)
+	sim_engine.mutations_lock_changed.connect(_on_mutations_lock_changed)
+	
+	## Mutation signals
+	sim_engine.mutation_applied.connect(_on_mutation_applied)
+	
+	## Entity signals
+	sim_engine.molecule_added.connect(_on_molecule_added)
+	sim_engine.enzyme_added.connect(_on_enzyme_added)
+	sim_engine.gene_added.connect(_on_gene_added)
+	
+	## Window resize
 	get_tree().root.size_changed.connect(_on_window_resized)
+	
+	## Connect concentration panel signals
+	if enzyme_panel:
+		enzyme_panel.concentration_changed.connect(_on_enzyme_concentration_changed)
+		enzyme_panel.lock_changed.connect(_on_enzyme_lock_changed)
+	
+	if molecule_panel:
+		molecule_panel.concentration_changed.connect(_on_molecule_concentration_changed)
+		molecule_panel.lock_changed.connect(_on_molecule_lock_changed)
+	
+	## Connect gene panel signals
+	if gene_panel:
+		gene_panel.gene_toggled.connect(_on_gene_toggled)
 
 func _setup_panels() -> void:
 	if not sim_engine:
@@ -111,22 +171,144 @@ func _setup_panels() -> void:
 	molecule_panel.setup_items(sim_engine.molecules.values(), "molecule")
 	gene_panel.setup_genes(sim_engine.genes, sim_engine.enzymes)
 
+func _sync_lock_buttons() -> void:
+	## Sync button states with simulator state
+	if not sim_engine:
+		return
+	
+	if lock_molecules_btn:
+		lock_molecules_btn.set_pressed_no_signal(sim_engine.lock_molecules)
+	if lock_enzymes_btn:
+		lock_enzymes_btn.set_pressed_no_signal(sim_engine.lock_enzymes)
+	if lock_genes_btn:
+		lock_genes_btn.set_pressed_no_signal(sim_engine.lock_genes)
+	if lock_reactions_btn:
+		lock_reactions_btn.set_pressed_no_signal(sim_engine.lock_reactions)
+	if lock_mutations_btn:
+		lock_mutations_btn.set_pressed_no_signal(sim_engine.lock_mutations)
+	
+	## Sync mutation rate slider
+	if mutation_rate_slider and sim_engine.mutation_system:
+		mutation_rate_slider.set_value_no_signal(sim_engine.mutation_system.enzyme_mutation_rate)
+		if mutation_rate_label:
+			mutation_rate_label.text = "%.3f/s" % sim_engine.mutation_system.enzyme_mutation_rate
+	
+	_update_lock_button_styles()
+
+#endregion
+
+#region Lock Signal Handlers (Reactive UI)
+
+func _on_molecules_lock_changed(locked: bool) -> void:
+	if lock_molecules_btn:
+		lock_molecules_btn.set_pressed_no_signal(locked)
+	_update_lock_button_styles()
+	_update_isolate_option_display()
+
+func _on_enzymes_lock_changed(locked: bool) -> void:
+	if lock_enzymes_btn:
+		lock_enzymes_btn.set_pressed_no_signal(locked)
+	_update_lock_button_styles()
+	_update_isolate_option_display()
+
+func _on_genes_lock_changed(locked: bool) -> void:
+	if lock_genes_btn:
+		lock_genes_btn.set_pressed_no_signal(locked)
+	_update_lock_button_styles()
+	_update_isolate_option_display()
+
+func _on_reactions_lock_changed(locked: bool) -> void:
+	if lock_reactions_btn:
+		lock_reactions_btn.set_pressed_no_signal(locked)
+	_update_lock_button_styles()
+	_update_isolate_option_display()
+
+func _on_mutations_lock_changed(locked: bool) -> void:
+	if lock_mutations_btn:
+		lock_mutations_btn.set_pressed_no_signal(locked)
+	_update_lock_button_styles()
+	_update_isolate_option_display()
+
+func _on_mutation_applied(mutation_type: String, details: Dictionary) -> void:
+	## Could add visual feedback here - flash, sound, log, etc.
+	## For now just log significant mutations
+	if mutation_type == "duplication" or mutation_type == "novel":
+		print("🧬 Mutation: %s - %s" % [mutation_type, details.get("enzyme_name", "unknown")])
+
+func _update_lock_button_styles() -> void:
+	## Visual feedback for locked state
+	var locked_color = Color(1.0, 0.4, 0.3)
+	var unlocked_color = Color(0.3, 0.9, 0.4)
+	
+	if lock_molecules_btn:
+		var color = locked_color if lock_molecules_btn.button_pressed else unlocked_color
+		lock_molecules_btn.add_theme_color_override("font_color", color)
+	
+	if lock_enzymes_btn:
+		var color = locked_color if lock_enzymes_btn.button_pressed else unlocked_color
+		lock_enzymes_btn.add_theme_color_override("font_color", color)
+	
+	if lock_genes_btn:
+		var color = locked_color if lock_genes_btn.button_pressed else unlocked_color
+		lock_genes_btn.add_theme_color_override("font_color", color)
+	
+	if lock_reactions_btn:
+		var color = locked_color if lock_reactions_btn.button_pressed else unlocked_color
+		lock_reactions_btn.add_theme_color_override("font_color", color)
+	
+	if lock_mutations_btn:
+		var color = locked_color if lock_mutations_btn.button_pressed else unlocked_color
+		lock_mutations_btn.add_theme_color_override("font_color", color)
+
+func _update_isolate_option_display() -> void:
+	## Update isolate dropdown to reflect current state
+	if not isolate_option or not sim_engine:
+		return
+	
+	var all_locked = sim_engine.lock_molecules and sim_engine.lock_enzymes and sim_engine.lock_genes and sim_engine.lock_reactions and sim_engine.lock_mutations
+	var none_locked = not sim_engine.lock_molecules and not sim_engine.lock_enzymes and not sim_engine.lock_genes and not sim_engine.lock_reactions and not sim_engine.lock_mutations
+	
+	if none_locked:
+		isolate_option.select(0)  ## Run All
+	elif all_locked:
+		isolate_option.select(6)  ## Lock All
+	elif not sim_engine.lock_molecules and sim_engine.lock_enzymes and sim_engine.lock_genes and sim_engine.lock_reactions and sim_engine.lock_mutations:
+		isolate_option.select(1)  ## Test Molecules
+	elif sim_engine.lock_molecules and not sim_engine.lock_enzymes and sim_engine.lock_genes and sim_engine.lock_reactions and sim_engine.lock_mutations:
+		isolate_option.select(2)  ## Test Enzymes
+	elif sim_engine.lock_molecules and sim_engine.lock_enzymes and not sim_engine.lock_genes and sim_engine.lock_reactions and sim_engine.lock_mutations:
+		isolate_option.select(3)  ## Test Genes
+	elif sim_engine.lock_molecules and sim_engine.lock_enzymes and sim_engine.lock_genes and not sim_engine.lock_reactions and sim_engine.lock_mutations:
+		isolate_option.select(4)  ## Test Reactions
+	elif sim_engine.lock_molecules and sim_engine.lock_enzymes and sim_engine.lock_genes and sim_engine.lock_reactions and not sim_engine.lock_mutations:
+		isolate_option.select(5)  ## Test Mutations
+
+#endregion
+
+#region Entity Signal Handlers
+
+func _on_molecule_added(molecule: Molecule) -> void:
+	## Reactively add new molecule to UI
+	if molecule_panel:
+		molecule_panel.add_item(molecule, "molecule")
+
+func _on_enzyme_added(enzyme: Enzyme) -> void:
+	## Reactively add new enzyme to UI
+	if enzyme_panel:
+		enzyme_panel.add_item(enzyme, "enzyme")
+
+func _on_gene_added(gene: Gene) -> void:
+	## Reactively add new gene to UI
+	if gene_panel and sim_engine:
+		var enzyme = sim_engine.enzymes.get(gene.enzyme_id)
+		gene_panel.add_gene(gene, enzyme)
+
 #endregion
 
 #region Layout Management
 
 func _apply_layout(mode: LayoutMode) -> void:
 	current_layout = mode
-	
-	## Store references before reparenting
-	var docks = {
-		"cell": cell_dock,
-		"reactions": reactions_dock,
-		"enzymes": enzymes_dock,
-		"molecules": molecules_dock,
-		"genes": genes_dock,
-		"chart": chart_dock
-	}
 	
 	## Remove all docks from current parents
 	for dock in all_docks:
@@ -247,12 +429,31 @@ func _update_cell_panel(data: Dictionary) -> void:
 	var thermal = cell.get_thermal_status()
 	var energy = cell.get_energy_status()
 	var protein = data.get("protein_stats", {})
+	var mutation_stats = data.get("mutation_stats", {})
+	var recent_mutations: Array = data.get("recent_mutations", [])
+	var locks = data.get("locks", {})
 	
 	var text = ""
 	var status_color = "green" if cell.is_alive else "red"
 	var status_text = "ALIVE" if cell.is_alive else "DEAD"
 	text += "[b]Status:[/b] [color=%s]%s[/color]\n" % [status_color, status_text]
 	text += "[b]Time:[/b] %.1f s\n\n" % data.get("time", 0.0)
+	
+	## Show lock status
+	var active_locks: Array[String] = []
+	if locks.get("molecules", false):
+		active_locks.append("Mol")
+	if locks.get("enzymes", false):
+		active_locks.append("Enz")
+	if locks.get("genes", false):
+		active_locks.append("Gen")
+	if locks.get("reactions", false):
+		active_locks.append("Rxn")
+	if locks.get("mutations", false):
+		active_locks.append("Mut")
+	
+	if not active_locks.is_empty():
+		text += "[color=orange]🔒 Locked: %s[/color]\n\n" % ", ".join(active_locks)
 	
 	text += "[color=yellow]━━ Thermal ━━[/color]\n"
 	text += "Heat: %.1f / %.1f\n" % [thermal.heat, thermal.max_threshold]
@@ -265,7 +466,15 @@ func _update_cell_panel(data: Dictionary) -> void:
 	text += "[color=lime]━━ Proteins ━━[/color]\n"
 	text += "Synth: %.4f mM\n" % protein.get("total_synthesized", 0.0)
 	text += "Degrad: %.4f mM\n" % protein.get("total_degraded", 0.0)
-	text += "↑%d ↓%d genes" % [protein.get("upregulated_genes", 0), protein.get("downregulated_genes", 0)]
+	text += "↑%d ↓%d genes\n\n" % [protein.get("upregulated_genes", 0), protein.get("downregulated_genes", 0)]
+	
+	## Mutations section
+	text += "[color=magenta]━━ Mutations ━━[/color]\n"
+	text += "Total: %d\n" % mutation_stats.get("total_mutations", 0)
+	if not recent_mutations.is_empty():
+		text += "Recent:\n"
+		for event in recent_mutations:
+			text += "  %s\n" % event.get_summary()
 	
 	cell_content.text = text
 
@@ -273,12 +482,18 @@ func _update_reactions_panel(data: Dictionary) -> void:
 	if not reactions_content or not reactions_dock.visible:
 		return
 	
-	var reactions: Array = data.get("reactions", [])
+	var reactions_arr: Array = data.get("reactions", [])
+	var locks = data.get("locks", {})
+	var is_locked = locks.get("reactions", false)
+	
 	var text = ""
 	
-	for rxn in reactions:
+	if is_locked:
+		text += "[color=orange]🔒 Reactions Locked[/color]\n\n"
+	
+	for rxn in reactions_arr:
 		var net_rate = rxn.get_net_rate()
-		var rate_color = "lime" if net_rate > 0.001 else ("orange" if net_rate < -0.001 else "gray")
+		var rate_color = "gray" if is_locked else ("lime" if net_rate > 0.001 else ("orange" if net_rate < -0.001 else "gray"))
 		
 		text += "[b]%s[/b]\n" % rxn.get_summary()
 		text += "  η=%.0f%% ΔG=%.1f kJ/mol\n" % [rxn.reaction_efficiency * 100.0, rxn.current_delta_g_actual]
@@ -289,22 +504,28 @@ func _update_reactions_panel(data: Dictionary) -> void:
 func _update_enzymes_panel(data: Dictionary) -> void:
 	if not enzyme_panel or not enzymes_dock.visible:
 		return
-	var enzymes: Dictionary = data.get("enzymes", {})
-	enzyme_panel.update_values(enzymes.values(), "enzyme")
+	var enzymes_dict: Dictionary = data.get("enzymes", {})
+	var locks = data.get("locks", {})
+	enzyme_panel.update_values(enzymes_dict.values(), "enzyme")
+	enzyme_panel.set_category_locked(locks.get("enzymes", false))
 
 func _update_molecules_panel(data: Dictionary) -> void:
 	if not molecule_panel or not molecules_dock.visible:
 		return
-	var molecules: Dictionary = data.get("molecules", {})
-	molecule_panel.update_values(molecules.values(), "molecule")
+	var molecules_dict: Dictionary = data.get("molecules", {})
+	var locks = data.get("locks", {})
+	molecule_panel.update_values(molecules_dict.values(), "molecule")
+	molecule_panel.set_category_locked(locks.get("molecules", false))
 
 func _update_genes_panel(data: Dictionary) -> void:
 	if not gene_panel or not genes_dock.visible:
 		return
-	var genes: Dictionary = data.get("genes", {})
-	var molecules: Dictionary = data.get("molecules", {})
-	var enzymes: Dictionary = data.get("enzymes", {})
-	gene_panel.update_genes(genes, molecules, enzymes)
+	var genes_dict: Dictionary = data.get("genes", {})
+	var molecules_dict: Dictionary = data.get("molecules", {})
+	var enzymes_dict: Dictionary = data.get("enzymes", {})
+	var locks = data.get("locks", {})
+	gene_panel.update_genes(genes_dict, molecules_dict, enzymes_dict)
+	gene_panel.set_category_locked(locks.get("genes", false))
 
 func _update_chart(data: Dictionary) -> void:
 	if not chart_panel or not chart_dock.visible:
@@ -390,6 +611,60 @@ func _on_chart_mode_changed(index: int) -> void:
 
 func _on_auto_scale_toggled(_pressed: bool) -> void:
 	pass
+
+#endregion
+
+#region Category Lock Callbacks
+
+func _on_lock_molecules_toggled(pressed: bool) -> void:
+	if sim_engine:
+		sim_engine.lock_molecules = pressed
+
+func _on_lock_enzymes_toggled(pressed: bool) -> void:
+	if sim_engine:
+		sim_engine.lock_enzymes = pressed
+
+func _on_lock_genes_toggled(pressed: bool) -> void:
+	if sim_engine:
+		sim_engine.lock_genes = pressed
+
+func _on_lock_reactions_toggled(pressed: bool) -> void:
+	if sim_engine:
+		sim_engine.lock_reactions = pressed
+
+func _on_lock_mutations_toggled(pressed: bool) -> void:
+	if sim_engine:
+		sim_engine.lock_mutations = pressed
+
+func _on_mutation_rate_changed(value: float) -> void:
+	if sim_engine and sim_engine.mutation_system:
+		sim_engine.mutation_system.enzyme_mutation_rate = value
+		if mutation_rate_label:
+			mutation_rate_label.text = "%.3f/s" % value
+
+func _on_isolate_selected(index: int) -> void:
+	if not sim_engine:
+		return
+	
+	match index:
+		0:  ## Run All
+			sim_engine.unlock_all()
+		1:  ## Test Molecules
+			sim_engine.isolate_system("molecules")
+		2:  ## Test Enzymes
+			sim_engine.isolate_system("enzymes")
+		3:  ## Test Genes
+			sim_engine.isolate_system("genes")
+		4:  ## Test Reactions
+			sim_engine.isolate_system("reactions")
+		5:  ## Test Mutations
+			sim_engine.isolate_system("mutations")
+		6:  ## Lock All
+			sim_engine.lock_all()
+
+#endregion
+
+#region Item-Level Callbacks
 
 func _on_enzyme_concentration_changed(id: String, value: float) -> void:
 	if sim_engine and sim_engine.enzymes.has(id):
