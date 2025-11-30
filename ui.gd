@@ -49,7 +49,7 @@ enum ChartMode { MOLECULES, ENZYMES, BOTH }
 @onready var genes_dock: DockPanel = %GenesPanel
 @onready var chart_dock: DockPanel = %ChartDock
 
-## Content panels
+## Content panels - these are children added to the dock panels
 @onready var cell_content: RichTextLabel = %CellContent
 @onready var reactions_content: RichTextLabel = %ReactionsContent
 @onready var enzyme_panel: ConcentrationPanel = %EnzymePanel
@@ -63,7 +63,7 @@ enum ChartMode { MOLECULES, ENZYMES, BOTH }
 
 var current_layout: LayoutMode = LayoutMode.ALL_PANELS
 var chart_mode: ChartMode = ChartMode.MOLECULES
-var is_paused: bool = false
+var is_paused: bool = true  ## Start paused
 
 var panel_visibility: Dictionary = {
 	"cell": true,
@@ -88,8 +88,9 @@ func _ready() -> void:
 	await get_tree().process_frame
 	
 	_connect_signals()
-	_setup_panels()
+	_show_empty_state()
 	_sync_lock_buttons()
+	_update_pause_button()
 
 func _setup_view_menu() -> void:
 	var popup = view_menu.get_popup()
@@ -128,10 +129,13 @@ func _cache_docks() -> void:
 
 func _connect_signals() -> void:
 	if not sim_engine:
+		push_error("SimEngine not found!")
 		return
 	
 	## Main simulation update (for chart and bulk updates)
 	sim_engine.simulation_updated.connect(_on_simulation_updated)
+	sim_engine.simulation_started.connect(_on_simulation_started)
+	sim_engine.simulation_stopped.connect(_on_simulation_stopped)
 	
 	## Category lock signals (reactive UI updates)
 	sim_engine.molecules_lock_changed.connect(_on_molecules_lock_changed)
@@ -164,12 +168,32 @@ func _connect_signals() -> void:
 	if gene_panel:
 		gene_panel.gene_toggled.connect(_on_gene_toggled)
 
+## Show empty state before simulation starts
+func _show_empty_state() -> void:
+	if cell_content:
+		cell_content.text = "[color=gray]Click ▶ Start to begin simulation[/color]"
+	if reactions_content:
+		reactions_content.text = "[color=gray]No reactions yet[/color]"
+	if enzyme_panel:
+		enzyme_panel.clear()
+	if molecule_panel:
+		molecule_panel.clear()
+	if gene_panel:
+		gene_panel.clear()
+	if chart_panel:
+		chart_panel.clear()
+
+## Setup panels with data from simulator
 func _setup_panels() -> void:
-	if not sim_engine:
+	if not sim_engine or not sim_engine.has_data():
 		return
-	enzyme_panel.setup_items(sim_engine.enzymes.values(), "enzyme")
-	molecule_panel.setup_items(sim_engine.molecules.values(), "molecule")
-	gene_panel.setup_genes(sim_engine.genes, sim_engine.enzymes)
+	
+	if enzyme_panel:
+		enzyme_panel.setup_items(sim_engine.enzymes.values(), "enzyme")
+	if molecule_panel:
+		molecule_panel.setup_items(sim_engine.molecules.values(), "molecule")
+	if gene_panel:
+		gene_panel.setup_genes(sim_engine.genes, sim_engine.enzymes)
 
 func _sync_lock_buttons() -> void:
 	## Sync button states with simulator state
@@ -194,6 +218,30 @@ func _sync_lock_buttons() -> void:
 			mutation_rate_label.text = "%.3f/s" % sim_engine.mutation_system.enzyme_mutation_rate
 	
 	_update_lock_button_styles()
+
+func _update_pause_button() -> void:
+	if not pause_button or not sim_engine:
+		return
+	
+	if not sim_engine.is_initialized:
+		pause_button.text = "▶ Start"
+	elif sim_engine.paused:
+		pause_button.text = "▶ Resume"
+	else:
+		pause_button.text = "⏸ Pause"
+
+#endregion
+
+#region Simulation Lifecycle Handlers
+
+func _on_simulation_started() -> void:
+	is_paused = false
+	_setup_panels()
+	_update_pause_button()
+
+func _on_simulation_stopped() -> void:
+	is_paused = true
+	_update_pause_button()
 
 #endregion
 
@@ -474,7 +522,8 @@ func _update_cell_panel(data: Dictionary) -> void:
 	if not recent_mutations.is_empty():
 		text += "Recent:\n"
 		for event in recent_mutations:
-			text += "  %s\n" % event.get_summary()
+			if event is Dictionary:
+				text += "  %s\n" % event.get("summary", "unknown")
 	
 	cell_content.text = text
 
@@ -491,13 +540,16 @@ func _update_reactions_panel(data: Dictionary) -> void:
 	if is_locked:
 		text += "[color=orange]🔒 Reactions Locked[/color]\n\n"
 	
-	for rxn in reactions_arr:
-		var net_rate = rxn.get_net_rate()
-		var rate_color = "gray" if is_locked else ("lime" if net_rate > 0.001 else ("orange" if net_rate < -0.001 else "gray"))
-		
-		text += "[b]%s[/b]\n" % rxn.get_summary()
-		text += "  η=%.0f%% ΔG=%.1f kJ/mol\n" % [rxn.reaction_efficiency * 100.0, rxn.current_delta_g_actual]
-		text += "  [color=%s]Net: %.4f mM/s[/color]\n\n" % [rate_color, net_rate]
+	if reactions_arr.is_empty():
+		text += "[color=gray]No reactions[/color]"
+	else:
+		for rxn in reactions_arr:
+			var net_rate = rxn.get_net_rate()
+			var rate_color = "gray" if is_locked else ("lime" if net_rate > 0.001 else ("orange" if net_rate < -0.001 else "gray"))
+			
+			text += "[b]%s[/b]\n" % rxn.get_summary()
+			text += "  η=%.0f%% ΔG=%.1f kJ/mol\n" % [rxn.reaction_efficiency * 100.0, rxn.current_delta_g_actual]
+			text += "  [color=%s]Net: %.4f mM/s[/color]\n\n" % [rate_color, net_rate]
 	
 	reactions_content.text = text
 
@@ -543,10 +595,12 @@ func _update_chart(data: Dictionary) -> void:
 			chart_data.series = data.get("enzyme_history", {})
 		ChartMode.BOTH:
 			var combined = {}
-			for key in data.get("molecule_history", {}):
-				combined["mol:" + key] = data.molecule_history[key]
-			for key in data.get("enzyme_history", {}):
-				combined["enz:" + key] = data.enzyme_history[key]
+			var mol_hist = data.get("molecule_history", {})
+			var enz_hist = data.get("enzyme_history", {})
+			for key in mol_hist:
+				combined["mol:" + key] = mol_hist[key]
+			for key in enz_hist:
+				combined["enz:" + key] = enz_hist[key]
 			chart_data.series = combined
 	
 	chart_panel.update_chart(chart_data, auto_scale_check.button_pressed)
@@ -556,16 +610,35 @@ func _update_chart(data: Dictionary) -> void:
 #region UI Callbacks
 
 func _on_pause_pressed() -> void:
-	is_paused = not is_paused
-	sim_engine.set_paused(is_paused)
-	pause_button.text = "▶ Resume" if is_paused else "⏸ Pause"
+	if not sim_engine:
+		return
+	
+	if not sim_engine.is_initialized:
+		## First time - start the simulation
+		sim_engine.start_simulation()
+	elif sim_engine.paused:
+		## Resume
+		sim_engine.set_paused(false)
+		sim_engine.is_running = true
+	else:
+		## Pause
+		sim_engine.set_paused(true)
+		sim_engine.is_running = false
+	
+	is_paused = sim_engine.paused
+	_update_pause_button()
 
 func _on_reset_pressed() -> void:
+	if not sim_engine:
+		return
+	
 	sim_engine.reset()
-	_setup_panels()
+	_show_empty_state()
+	_update_pause_button()
 
 func _on_speed_changed(value: float) -> void:
-	sim_engine.set_time_scale(value)
+	if sim_engine:
+		sim_engine.set_time_scale(value)
 	speed_value.text = "%.1fx" % value
 
 func _on_layout_selected(index: int) -> void:

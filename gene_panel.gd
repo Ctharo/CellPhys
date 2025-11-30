@@ -11,6 +11,7 @@ const DOWNREGULATED_COLOR = Color(0.8, 0.3, 0.2)
 const BASAL_COLOR = Color(0.7, 0.7, 0.7)
 
 var gene_entries: Dictionary = {}  ## {gene_id: GeneEntry}
+var category_locked: bool = false  ## Whether the entire category is locked
 
 class GeneEntry:
 	var container: VBoxContainer
@@ -23,6 +24,12 @@ class GeneEntry:
 	var regulation_container: VBoxContainer
 	var activator_entries: Array = []
 	var repressor_entries: Array = []
+
+class RegulatorEntry:
+	var container: HBoxContainer
+	var molecule_label: Label
+	var occupancy_bar: ProgressBar
+	var effect_label: Label
 
 #region Setup
 
@@ -48,6 +55,16 @@ func setup_genes(genes: Dictionary, enzymes: Dictionary) -> void:
 		var gene: Gene = genes[gene_id]
 		var enzyme: Enzyme = enzymes.get(gene.enzyme_id)
 		_create_gene_entry(gene, enzyme)
+
+## Add a single gene dynamically (for reactive updates)
+func add_gene(gene: Gene, enzyme: Enzyme) -> void:
+	## Remove "no genes" label if present
+	if gene_entries.is_empty() and get_child_count() > 0:
+		var first_child = get_child(0)
+		if first_child is Label:
+			first_child.queue_free()
+	
+	_create_gene_entry(gene, enzyme)
 
 func _create_gene_entry(gene: Gene, enzyme: Enzyme) -> void:
 	var entry = GeneEntry.new()
@@ -81,6 +98,7 @@ func _create_gene_entry(gene: Gene, enzyme: Enzyme) -> void:
 	entry.toggle.button_pressed = gene.is_active
 	entry.toggle.tooltip_text = "Toggle gene expression"
 	entry.toggle.toggled.connect(_on_gene_toggled.bind(gene.enzyme_id))
+	entry.toggle.disabled = category_locked
 	entry.header.add_child(entry.toggle)
 	
 	entry.name_label = Label.new()
@@ -180,12 +198,6 @@ func _create_gene_entry(gene: Gene, enzyme: Enzyme) -> void:
 	
 	add_child(entry.container)
 	gene_entries[gene.enzyme_id] = entry
-
-class RegulatorEntry:
-	var container: HBoxContainer
-	var molecule_label: Label
-	var occupancy_bar: ProgressBar
-	var effect_label: Label
 
 func _create_regulator_entry(element: RegulatoryElement, is_activator: bool, gene_id: String, index: int) -> RegulatorEntry:
 	var entry = RegulatorEntry.new()
@@ -290,6 +302,19 @@ func update_genes(genes: Dictionary, molecules: Dictionary, enzymes: Dictionary)
 			var effect = rep.calculate_effect(molecules)
 			rep_entry.occupancy_bar.value = occupancy
 			rep_entry.effect_label.text = "%.2fx" % effect
+
+## Set category-level lock state
+func set_category_locked(locked: bool) -> void:
+	category_locked = locked
+	for gene_id in gene_entries:
+		var entry: GeneEntry = gene_entries[gene_id]
+		entry.toggle.disabled = locked
+		
+		## Visual feedback for category lock
+		if locked:
+			entry.name_label.add_theme_color_override("font_color", Color(0.6, 0.4, 0.4))
+		else:
+			entry.name_label.remove_theme_color_override("font_color")
 
 #endregion
 

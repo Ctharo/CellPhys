@@ -7,6 +7,7 @@ signal concentration_changed(id: String, value: float)
 signal lock_changed(id: String, locked: bool)
 
 var item_entries: Dictionary = {}  ## {id: ItemEntry}
+var category_locked: bool = false  ## Whether the entire category is locked
 
 class ItemEntry:
 	var container: HBoxContainer
@@ -36,6 +37,16 @@ func setup_items(items: Array, item_type: String) -> void:
 	
 	for item in items:
 		_create_item_entry(item, item_type)
+
+## Add a single item dynamically (for reactive updates)
+func add_item(item, item_type: String) -> void:
+	## Remove "no items" label if present
+	if item_entries.is_empty() and get_child_count() > 0:
+		var first_child = get_child(0)
+		if first_child is Label:
+			first_child.queue_free()
+	
+	_create_item_entry(item, item_type)
 
 func _create_item_entry(item, item_type: String) -> void:
 	var entry = ItemEntry.new()
@@ -89,7 +100,7 @@ func _create_item_entry(item, item_type: String) -> void:
 	entry.slider.max_value = _get_max_for_type(item_type)
 	entry.slider.step = 0.001
 	entry.slider.value = item_conc
-	entry.slider.editable = not item_locked
+	entry.slider.editable = not item_locked and not category_locked
 	entry.slider.value_changed.connect(_on_slider_changed.bind(item_id))
 	entry.container.add_child(entry.slider)
 	
@@ -155,6 +166,20 @@ func update_values(items: Array, item_type: String) -> void:
 		if not entry.slider.has_focus() and not item_locked:
 			entry.slider.set_value_no_signal(item_conc)
 
+## Set category-level lock state (affects all sliders)
+func set_category_locked(locked: bool) -> void:
+	category_locked = locked
+	for item_id in item_entries:
+		var entry: ItemEntry = item_entries[item_id]
+		## Only allow editing if both category and individual item are unlocked
+		entry.slider.editable = not locked and not entry.lock_button.button_pressed
+		
+		## Visual feedback for category lock
+		if locked:
+			entry.name_label.add_theme_color_override("font_color", Color(0.6, 0.4, 0.4))
+		else:
+			entry.name_label.remove_theme_color_override("font_color")
+
 #endregion
 
 #region Callbacks
@@ -166,7 +191,7 @@ func _on_slider_changed(value: float, item_id: String) -> void:
 
 func _on_lock_toggled(pressed: bool, item_id: String) -> void:
 	if item_entries.has(item_id):
-		item_entries[item_id].slider.editable = not pressed
+		item_entries[item_id].slider.editable = not pressed and not category_locked
 	lock_changed.emit(item_id, pressed)
 
 #endregion

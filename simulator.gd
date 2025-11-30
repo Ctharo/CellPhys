@@ -7,6 +7,8 @@ extends Node
 #region Signals - Inter-system Communication
 
 signal simulation_updated(data: Dictionary)
+signal simulation_started()
+signal simulation_stopped()
 
 ## Entity lifecycle signals
 signal molecule_added(molecule: Molecule)
@@ -38,8 +40,15 @@ signal selection_applied(selection_type: String, details: Dictionary)
 #region Configuration
 
 @export var time_scale: float = 1.0
-@export var paused: bool = false
-@export var auto_generate: bool = true
+@export var paused: bool = true  ## Start paused until user clicks play
+@export var auto_generate: bool = false  ## Don't auto-generate on ready
+
+#endregion
+
+#region Simulation State
+
+var is_initialized: bool = false  ## Whether the simulation has been set up
+var is_running: bool = false  ## Whether simulation is actively running
 
 #endregion
 
@@ -49,7 +58,7 @@ var _lock_molecules: bool = false
 var _lock_enzymes: bool = false
 var _lock_genes: bool = false
 var _lock_reactions: bool = false
-var _lock_mutations: bool = false
+var _lock_mutations: bool = true  ## Start with mutations locked
 
 ## When locked, molecule concentrations won't change (ignores reaction deltas)
 var lock_molecules: bool:
@@ -91,7 +100,7 @@ var lock_mutations: bool:
 			_lock_mutations = value
 			mutations_lock_changed.emit(value)
 
-var _lock_evolution: bool = false
+var _lock_evolution: bool = true  ## Start with evolution locked
 
 ## When locked, no selection pressure will be applied
 var lock_evolution: bool:
@@ -149,8 +158,27 @@ func _ready() -> void:
 	mutation_system = MutationSystem.new()
 	evolution_system = EvolutionSystem.new()
 	
-	if auto_generate:
+	## Don't auto-generate - wait for user to start
+
+## Initialize and start the simulation with random system
+func start_simulation() -> void:
+	if not is_initialized:
 		_generate_random_system()
+		is_initialized = true
+	
+	paused = false
+	is_running = true
+	simulation_started.emit()
+
+## Stop the simulation
+func stop_simulation() -> void:
+	paused = true
+	is_running = false
+	simulation_stopped.emit()
+
+## Check if simulation has been initialized
+func has_data() -> bool:
+	return is_initialized and not molecules.is_empty()
 
 func _generate_random_system() -> void:
 	var num_molecules = randi_range(4, 6)
@@ -247,7 +275,7 @@ func get_all_reactions() -> Array[Reaction]:
 #region Simulation Loop - Orchestrates Independent Subsystems
 
 func _process(delta: float) -> void:
-	if paused or not cell.is_alive:
+	if paused or not cell.is_alive or not is_initialized:
 		return
 	
 	var scaled_delta = delta * time_scale
@@ -752,19 +780,24 @@ func reset() -> void:
 	total_mutations = 0
 	mutation_history.clear()
 	
-	for mol_name in molecules:
-		molecules[mol_name].concentration = molecules[mol_name].initial_concentration
+	## Clear all entities
+	molecules.clear()
+	enzymes.clear()
+	reactions.clear()
+	genes.clear()
 	
-	for enz_id in enzymes:
-		enzymes[enz_id].concentration = enzymes[enz_id].initial_concentration
+	## Clear history
+	time_history.clear()
+	molecule_history.clear()
+	enzyme_history.clear()
 	
+	## Reset cell
 	cell = Cell.new()
 	
-	time_history.clear()
-	for mol_name in molecule_history:
-		molecule_history[mol_name].clear()
-	for enz_id in enzyme_history:
-		enzyme_history[enz_id].clear()
+	## Mark as not initialized so we regenerate on next start
+	is_initialized = false
+	is_running = false
+	paused = true
 
 ## Lock all categories except the specified one (for isolated testing)
 func isolate_system(system: String) -> void:
@@ -809,6 +842,7 @@ func get_simulation_data() -> Dictionary:
 		"protein_stats": get_protein_expression_stats(),
 		"mutation_stats": get_mutation_stats(),
 		"evolution_stats": get_evolution_stats(),
+		"recent_mutations": mutation_history.slice(-5) if mutation_history.size() > 0 else [],
 		"locks": {
 			"molecules": lock_molecules,
 			"enzymes": lock_enzymes,
@@ -816,7 +850,9 @@ func get_simulation_data() -> Dictionary:
 			"reactions": lock_reactions,
 			"mutations": lock_mutations,
 			"evolution": lock_evolution
-		}
+		},
+		"is_running": is_running,
+		"is_initialized": is_initialized
 	}
 
 func get_protein_expression_stats() -> Dictionary:
