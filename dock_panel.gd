@@ -15,7 +15,6 @@ signal panel_visibility_changed(panel_name: String, is_visible: bool)
 @onready var title_label: Label = %TitleLabel
 @onready var close_button: Button = %CloseButton
 @onready var content_margin: MarginContainer = %ContentMargin
-@onready var content: VBoxContainer = %Content
 
 var is_collapsed: bool = false
 
@@ -37,7 +36,7 @@ func set_title(title: String, icon: String = "") -> void:
 	_update_title()
 
 func get_content_container() -> VBoxContainer:
-	return content
+	return %Content
 
 #endregion
 

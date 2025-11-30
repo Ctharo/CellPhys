@@ -34,8 +34,7 @@ enum ChartMode { MOLECULES, ENZYMES, BOTH }
 @onready var mutation_rate_label: Label = %MutationRateLabel
 
 ## Main layout
-@onready var main_area: Control = %MainArea
-@onready var hsplit1: HSplitContainer = %HSplit1
+@onready var main_area: HSplitContainer = %MainArea
 @onready var hsplit2: HSplitContainer = %HSplit2
 @onready var left_column: VSplitContainer = %LeftColumn
 @onready var middle_column: VSplitContainer = %MiddleColumn
