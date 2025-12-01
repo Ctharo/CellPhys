@@ -1,5 +1,6 @@
 ## Main UI controller - handles logic for scene-based layout
 ## Uses reactive signal-based architecture for real-time updates
+## Supports drag-drop panel rearrangement
 extends Control
 
 #region Enums
@@ -74,6 +75,11 @@ var panel_visibility: Dictionary = {
 }
 
 var all_docks: Array[DockPanel] = []
+var all_columns: Array[VSplitContainer] = []
+
+## Drag and drop state
+var dragging_panel: DockPanel = null
+var drop_indicator: Panel = null
 
 #endregion
 
@@ -83,10 +89,12 @@ func _ready() -> void:
 	_setup_view_menu()
 	_setup_isolate_menu()
 	_cache_docks()
+	_setup_drop_indicator()
 	
 	await get_tree().process_frame
 	
 	_connect_signals()
+	_connect_drag_drop_signals()
 	_show_empty_state()
 	_sync_lock_buttons()
 	_update_pause_button()
@@ -125,6 +133,23 @@ func _setup_isolate_menu() -> void:
 
 func _cache_docks() -> void:
 	all_docks = [cell_dock, reactions_dock, enzymes_dock, molecules_dock, genes_dock, chart_dock]
+	all_columns = [left_column, middle_column, right_column]
+
+func _setup_drop_indicator() -> void:
+	drop_indicator = Panel.new()
+	drop_indicator.custom_minimum_size = Vector2(0, 6)
+	drop_indicator.visible = false
+	drop_indicator.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.3, 0.7, 1.0, 0.9)
+	style.corner_radius_top_left = 3
+	style.corner_radius_top_right = 3
+	style.corner_radius_bottom_left = 3
+	style.corner_radius_bottom_right = 3
+	drop_indicator.add_theme_stylebox_override("panel", style)
+	
+	add_child(drop_indicator)
 
 func _connect_signals() -> void:
 	if not sim_engine:
@@ -166,6 +191,13 @@ func _connect_signals() -> void:
 	## Connect gene panel signals
 	if gene_panel:
 		gene_panel.gene_toggled.connect(_on_gene_toggled)
+
+func _connect_drag_drop_signals() -> void:
+	## Connect drag/drop signals for each dock panel
+	for dock in all_docks:
+		dock.drag_started.connect(_on_dock_drag_started)
+		dock.drag_ended.connect(_on_dock_drag_ended)
+		dock.drop_requested.connect(_on_dock_drop_requested)
 
 ## Show empty state before simulation starts
 func _show_empty_state() -> void:
@@ -228,6 +260,128 @@ func _update_pause_button() -> void:
 		pause_button.text = "▶ Resume"
 	else:
 		pause_button.text = "⏸ Pause"
+
+#endregion
+
+#region Drag and Drop Handling
+
+func _on_dock_drag_started(panel: DockPanel) -> void:
+	dragging_panel = panel
+	panel.modulate = Color(1.0, 1.0, 1.0, 0.6)
+
+func _on_dock_drag_ended(panel: DockPanel) -> void:
+	dragging_panel = null
+	panel.modulate = Color.WHITE
+	drop_indicator.visible = false
+
+func _on_dock_drop_requested(source_panel: DockPanel, target_container: Control, target_index: int) -> void:
+	_move_panel_to(source_panel, target_container, target_index)
+
+func _move_panel_to(panel: DockPanel, target_container: Control, target_index: int) -> void:
+	var old_parent = panel.get_parent()
+	
+	## Remove from old parent
+	if old_parent:
+		old_parent.remove_child(panel)
+	
+	## Add to new container at specified index
+	target_container.add_child(panel)
+	if target_index >= 0 and target_index < target_container.get_child_count():
+		target_container.move_child(panel, target_index)
+
+func _process(_delta: float) -> void:
+	## Handle drag preview indicator
+	if dragging_panel and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		_update_drop_indicator()
+	elif drop_indicator.visible:
+		drop_indicator.visible = false
+
+func _update_drop_indicator() -> void:
+	var mouse_pos = get_global_mouse_position()
+	
+	## Find which column we're over
+	for column in all_columns:
+		var col_rect = column.get_global_rect()
+		if col_rect.has_point(mouse_pos):
+			## We're over this column - find drop position
+			var local_pos = column.get_local_mouse_position()
+			var target_index = _get_drop_index_in_column(column, local_pos.y)
+			
+			## Position the indicator
+			_show_drop_indicator_at(column, target_index)
+			return
+	
+	drop_indicator.visible = false
+
+func _get_drop_index_in_column(column: VSplitContainer, local_y: float) -> int:
+	var children = column.get_children()
+	
+	for i in range(children.size()):
+		var child = children[i]
+		if not child is Control or child == drop_indicator:
+			continue
+		
+		var child_rect = child.get_rect()
+		var child_center_y = child_rect.position.y + child_rect.size.y / 2
+		
+		if local_y < child_center_y:
+			return i
+	
+	return children.size()
+
+func _show_drop_indicator_at(column: VSplitContainer, index: int) -> void:
+	var children = column.get_children()
+	
+	if children.is_empty():
+		## Empty column - show at top
+		var col_rect = column.get_global_rect()
+		drop_indicator.global_position = col_rect.position
+		drop_indicator.size = Vector2(col_rect.size.x, 6)
+	elif index >= children.size():
+		## After last child
+		var last_child = children[children.size() - 1] as Control
+		var last_rect = last_child.get_global_rect()
+		drop_indicator.global_position = Vector2(last_rect.position.x, last_rect.end.y + 2)
+		drop_indicator.size = Vector2(last_rect.size.x, 6)
+	else:
+		## Before specific child
+		var target_child = children[index] as Control
+		var target_rect = target_child.get_global_rect()
+		drop_indicator.global_position = Vector2(target_rect.position.x, target_rect.position.y - 4)
+		drop_indicator.size = Vector2(target_rect.size.x, 6)
+	
+	drop_indicator.visible = true
+
+func _input(event: InputEvent) -> void:
+	## Handle drop on mouse release
+	if event is InputEventMouseButton:
+		var mb = event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT and not mb.pressed and dragging_panel:
+			_perform_drop()
+			dragging_panel = null
+			drop_indicator.visible = false
+
+func _perform_drop() -> void:
+	if not dragging_panel:
+		return
+	
+	var mouse_pos = get_global_mouse_position()
+	
+	## Find which column we're over
+	for column in all_columns:
+		var col_rect = column.get_global_rect()
+		if col_rect.has_point(mouse_pos):
+			var local_pos = column.get_local_mouse_position()
+			var target_index = _get_drop_index_in_column(column, local_pos.y)
+			
+			## Don't move if same position
+			var current_parent = dragging_panel.get_parent()
+			var current_index = current_parent.get_children().find(dragging_panel) if current_parent else -1
+			
+			if current_parent != column or current_index != target_index:
+				_move_panel_to(dragging_panel, column, target_index)
+			
+			return
 
 #endregion
 
@@ -666,17 +820,17 @@ func _on_view_menu_pressed(id: int) -> void:
 				panel_visibility[key] = false
 			_apply_panel_visibility()
 
-func _toggle_panel(panel_name: String, popup: PopupMenu, index: int) -> void:
-	panel_visibility[panel_name] = not panel_visibility[panel_name]
-	popup.set_item_checked(index, panel_visibility[panel_name])
+func _toggle_panel(panel_name_key: String, popup: PopupMenu, index: int) -> void:
+	panel_visibility[panel_name_key] = not panel_visibility[panel_name_key]
+	popup.set_item_checked(index, panel_visibility[panel_name_key])
 	_apply_panel_visibility()
 
-func _on_panel_visibility_changed(panel_name: String, is_visible: bool) -> void:
-	panel_visibility[panel_name] = is_visible
+func _on_panel_visibility_changed(pname: String, is_visible: bool) -> void:
+	panel_visibility[pname] = is_visible
 	var popup = view_menu.get_popup()
 	var indices = {"cell": 0, "reactions": 1, "enzymes": 2, "molecules": 3, "genes": 4, "chart": 5}
-	if indices.has(panel_name):
-		popup.set_item_checked(indices[panel_name], is_visible)
+	if indices.has(pname):
+		popup.set_item_checked(indices[pname], is_visible)
 
 func _on_chart_mode_changed(index: int) -> void:
 	chart_mode = index as ChartMode

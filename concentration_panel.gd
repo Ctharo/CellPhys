@@ -1,22 +1,39 @@
 ## Reusable panel for displaying and editing concentrations
 ## Used for both enzymes and molecules
+## Features: editable spinbox, unit conversion, lock only affects simulation (not manual edits)
 class_name ConcentrationPanel
 extends VBoxContainer
 
 signal concentration_changed(id: String, value: float)
 signal lock_changed(id: String, locked: bool)
 
+#region Unit Conversion Constants
+
+enum Unit { MILLIMOLAR, MICROMOLAR, NANOMOLAR, PICOMOLAR }
+
+const UNIT_NAMES: Array[String] = ["mM", "µM", "nM", "pM"]
+const UNIT_MULTIPLIERS: Array[float] = [1.0, 1000.0, 1000000.0, 1000000000.0]
+
+#endregion
+
 var item_entries: Dictionary = {}  ## {id: ItemEntry}
-var category_locked: bool = false  ## Whether the entire category is locked
+var category_locked: bool = false  ## Whether the entire category is locked (simulation only)
+var default_item_type: String = "molecule"
 
 class ItemEntry:
 	var container: HBoxContainer
 	var name_label: Label
-	var value_label: Label
+	var spinbox: SpinBox
 	var slider: HSlider
+	var unit_option: OptionButton
 	var lock_button: CheckBox
 	var info_label: Label
 	var id: String
+	var display_name: String
+	var current_unit: int = 0  ## Unit.MILLIMOLAR
+	var base_value_mm: float = 0.0  ## Always store in mM internally
+	var item_type: String = "molecule"
+	var is_updating: bool = false  ## Prevent recursive updates
 
 #region Setup
 
@@ -27,6 +44,7 @@ func clear() -> void:
 
 func setup_items(items: Array, item_type: String) -> void:
 	clear()
+	default_item_type = item_type
 	
 	if items.is_empty():
 		var empty_label = Label.new()
@@ -50,6 +68,7 @@ func add_item(item, item_type: String) -> void:
 
 func _create_item_entry(item, item_type: String) -> void:
 	var entry = ItemEntry.new()
+	entry.item_type = item_type
 	
 	## Get item properties based on type
 	var item_id: String
@@ -73,51 +92,62 @@ func _create_item_entry(item, item_type: String) -> void:
 		extra_info = "(E=%.0f kJ/mol)" % item.potential_energy
 	
 	entry.id = item_id
+	entry.display_name = item_name
+	entry.base_value_mm = item_conc
 	
-	## Container
+	## Main container
 	entry.container = HBoxContainer.new()
-	entry.container.add_theme_constant_override("separation", 8)
+	entry.container.add_theme_constant_override("separation", 6)
 	
-	## Lock checkbox
+	## Lock checkbox - now just marks for simulation lock, not edit lock
 	entry.lock_button = CheckBox.new()
 	entry.lock_button.button_pressed = item_locked
-	entry.lock_button.tooltip_text = "Lock concentration"
+	entry.lock_button.tooltip_text = "Lock from simulation changes (still manually editable)"
 	entry.lock_button.toggled.connect(_on_lock_toggled.bind(item_id))
 	entry.container.add_child(entry.lock_button)
 	
 	## Name label
 	entry.name_label = Label.new()
 	entry.name_label.text = item_name
-	entry.name_label.custom_minimum_size = Vector2(90, 0)
+	entry.name_label.custom_minimum_size = Vector2(80, 0)
 	entry.name_label.add_theme_font_size_override("font_size", 12)
+	entry.name_label.clip_text = true
 	entry.container.add_child(entry.name_label)
 	
 	## Slider
 	entry.slider = HSlider.new()
-	entry.slider.custom_minimum_size = Vector2(100, 0)
+	entry.slider.custom_minimum_size = Vector2(80, 0)
 	entry.slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	entry.slider.min_value = 0.0
-	entry.slider.max_value = _get_max_for_type(item_type)
-	entry.slider.step = 0.001
+	entry.slider.max_value = _get_slider_max_for_unit(item_type, Unit.MILLIMOLAR)
+	entry.slider.step = 0.0001
 	entry.slider.value = item_conc
-	entry.slider.editable = not item_locked and not category_locked
 	entry.slider.value_changed.connect(_on_slider_changed.bind(item_id))
 	entry.container.add_child(entry.slider)
 	
-	## Value label
-	entry.value_label = Label.new()
-	entry.value_label.text = "%.4f" % item_conc
-	entry.value_label.custom_minimum_size = Vector2(55, 0)
-	entry.value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	entry.value_label.add_theme_font_size_override("font_size", 11)
-	entry.container.add_child(entry.value_label)
+	## SpinBox for precise numerical input
+	entry.spinbox = SpinBox.new()
+	entry.spinbox.custom_minimum_size = Vector2(90, 0)
+	entry.spinbox.min_value = 0.0
+	entry.spinbox.max_value = _get_spinbox_max_for_unit(item_type, Unit.MILLIMOLAR)
+	entry.spinbox.step = 0.0001
+	entry.spinbox.value = item_conc
+	entry.spinbox.allow_greater = true
+	entry.spinbox.allow_lesser = false
+	entry.spinbox.select_all_on_focus = true
+	entry.spinbox.add_theme_font_size_override("font_size", 11)
+	entry.spinbox.value_changed.connect(_on_spinbox_changed.bind(item_id))
+	entry.container.add_child(entry.spinbox)
 	
-	## Unit label
-	var unit_label = Label.new()
-	unit_label.text = "mM"
-	unit_label.add_theme_font_size_override("font_size", 11)
-	unit_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
-	entry.container.add_child(unit_label)
+	## Unit selector
+	entry.unit_option = OptionButton.new()
+	entry.unit_option.custom_minimum_size = Vector2(55, 0)
+	entry.unit_option.add_theme_font_size_override("font_size", 11)
+	for i in range(UNIT_NAMES.size()):
+		entry.unit_option.add_item(UNIT_NAMES[i], i)
+	entry.unit_option.selected = Unit.MILLIMOLAR
+	entry.unit_option.item_selected.connect(_on_unit_changed.bind(item_id))
+	entry.container.add_child(entry.unit_option)
 	
 	## Info label
 	entry.info_label = Label.new()
@@ -128,12 +158,52 @@ func _create_item_entry(item, item_type: String) -> void:
 	
 	add_child(entry.container)
 	item_entries[item_id] = entry
+	
+	## Apply initial lock visual state
+	_update_lock_visual(entry, item_locked)
 
-func _get_max_for_type(item_type: String) -> float:
+func _get_slider_max_for_unit(item_type: String, unit: int) -> float:
+	var base_max: float
 	if item_type == "enzyme":
-		return 0.1  ## Enzymes typically in µM-mM range
+		base_max = 0.1  ## 0.1 mM max for enzymes
 	else:
-		return 20.0  ## Metabolites can be higher
+		base_max = 20.0  ## 20 mM max for molecules
+	return base_max * UNIT_MULTIPLIERS[unit]
+
+func _get_spinbox_max_for_unit(item_type: String, unit: int) -> float:
+	## Spinbox allows higher values than slider
+	var base_max: float
+	if item_type == "enzyme":
+		base_max = 1.0  ## 1 mM for spinbox
+	else:
+		base_max = 100.0  ## 100 mM for spinbox
+	return base_max * UNIT_MULTIPLIERS[unit]
+
+#endregion
+
+#region Unit Conversion
+
+## Convert from mM to the specified unit
+func _mm_to_unit(value_mm: float, unit: int) -> float:
+	return value_mm * UNIT_MULTIPLIERS[unit]
+
+## Convert from specified unit to mM
+func _unit_to_mm(value: float, unit: int) -> float:
+	return value / UNIT_MULTIPLIERS[unit]
+
+## Update step size based on unit
+func _get_step_for_unit(unit: int) -> float:
+	match unit:
+		Unit.MILLIMOLAR:
+			return 0.0001
+		Unit.MICROMOLAR:
+			return 0.1
+		Unit.NANOMOLAR:
+			return 100.0
+		Unit.PICOMOLAR:
+			return 100000.0
+		_:
+			return 0.0001
 
 #endregion
 
@@ -159,39 +229,110 @@ func update_values(items: Array, item_type: String) -> void:
 		
 		var entry: ItemEntry = item_entries[item_id]
 		
-		## Update value label
-		entry.value_label.text = "%.4f" % item_conc
-		
-		## Update slider if not being dragged and not locked
-		if not entry.slider.has_focus() and not item_locked:
-			entry.slider.set_value_no_signal(item_conc)
+		## Only update from simulation if not locked and not being edited
+		if not item_locked and not entry.spinbox.has_focus() and not entry.slider.has_focus():
+			entry.is_updating = true
+			entry.base_value_mm = item_conc
+			var display_value = _mm_to_unit(item_conc, entry.current_unit)
+			entry.slider.set_value_no_signal(display_value)
+			entry.spinbox.set_value_no_signal(display_value)
+			entry.is_updating = false
 
-## Set category-level lock state (affects all sliders)
+## Set category-level lock state
+## This only affects whether simulation updates the values, not whether user can edit
 func set_category_locked(locked: bool) -> void:
 	category_locked = locked
 	for item_id in item_entries:
 		var entry: ItemEntry = item_entries[item_id]
-		## Only allow editing if both category and individual item are unlocked
-		entry.slider.editable = not locked and not entry.lock_button.button_pressed
-		
-		## Visual feedback for category lock
-		if locked:
-			entry.name_label.add_theme_color_override("font_color", Color(0.6, 0.4, 0.4))
-		else:
-			entry.name_label.remove_theme_color_override("font_color")
+		_update_category_lock_visual(entry, locked)
+
+func _update_lock_visual(entry: ItemEntry, is_locked: bool) -> void:
+	## Lock icon indicator
+	if is_locked:
+		entry.name_label.add_theme_color_override("font_color", Color(0.8, 0.6, 0.2))
+	else:
+		entry.name_label.remove_theme_color_override("font_color")
+
+func _update_category_lock_visual(entry: ItemEntry, p_category_locked: bool) -> void:
+	## Category lock shows visual indicator but doesn't disable editing
+	if p_category_locked and not entry.lock_button.button_pressed:
+		entry.container.modulate = Color(0.9, 0.8, 0.8)
+	else:
+		entry.container.modulate = Color.WHITE
 
 #endregion
 
 #region Callbacks
 
 func _on_slider_changed(value: float, item_id: String) -> void:
-	if item_entries.has(item_id):
-		item_entries[item_id].value_label.text = "%.4f" % value
-	concentration_changed.emit(item_id, value)
+	if not item_entries.has(item_id):
+		return
+	
+	var entry: ItemEntry = item_entries[item_id]
+	if entry.is_updating:
+		return
+	
+	entry.is_updating = true
+	
+	## Update spinbox to match
+	entry.spinbox.set_value_no_signal(value)
+	
+	## Convert to mM and emit
+	entry.base_value_mm = _unit_to_mm(value, entry.current_unit)
+	concentration_changed.emit(item_id, entry.base_value_mm)
+	
+	entry.is_updating = false
+
+func _on_spinbox_changed(value: float, item_id: String) -> void:
+	if not item_entries.has(item_id):
+		return
+	
+	var entry: ItemEntry = item_entries[item_id]
+	if entry.is_updating:
+		return
+	
+	entry.is_updating = true
+	
+	## Update slider to match (clamped to slider range)
+	entry.slider.set_value_no_signal(clampf(value, entry.slider.min_value, entry.slider.max_value))
+	
+	## Convert to mM and emit
+	entry.base_value_mm = _unit_to_mm(value, entry.current_unit)
+	concentration_changed.emit(item_id, entry.base_value_mm)
+	
+	entry.is_updating = false
+
+func _on_unit_changed(unit_index: int, item_id: String) -> void:
+	if not item_entries.has(item_id):
+		return
+	
+	var entry: ItemEntry = item_entries[item_id]
+	entry.is_updating = true
+	
+	## Store new unit
+	entry.current_unit = unit_index
+	
+	## Convert the display value to the new unit
+	var new_display_value = _mm_to_unit(entry.base_value_mm, unit_index)
+	
+	## Update slider range and step
+	entry.slider.max_value = _get_slider_max_for_unit(entry.item_type, unit_index)
+	entry.slider.step = _get_step_for_unit(unit_index)
+	entry.slider.set_value_no_signal(clampf(new_display_value, 0.0, entry.slider.max_value))
+	
+	## Update spinbox range and step
+	entry.spinbox.max_value = _get_spinbox_max_for_unit(entry.item_type, unit_index)
+	entry.spinbox.step = _get_step_for_unit(unit_index)
+	entry.spinbox.set_value_no_signal(new_display_value)
+	
+	entry.is_updating = false
 
 func _on_lock_toggled(pressed: bool, item_id: String) -> void:
-	if item_entries.has(item_id):
-		item_entries[item_id].slider.editable = not pressed and not category_locked
+	if not item_entries.has(item_id):
+		return
+	
+	var entry: ItemEntry = item_entries[item_id]
+	_update_lock_visual(entry, pressed)
 	lock_changed.emit(item_id, pressed)
 
 #endregion
