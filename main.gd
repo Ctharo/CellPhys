@@ -49,13 +49,13 @@ enum ChartMode { MOLECULES, ENZYMES, BOTH }
 @onready var genes_dock: DockPanel = %GenesPanel
 @onready var chart_dock: DockPanel = %ChartDock
 
-## Content panels - these are children added to the dock panels
-@onready var cell_content: RichTextLabel = %CellContent
-@onready var reactions_content: RichTextLabel = %ReactionsContent
-@onready var enzyme_panel: ConcentrationPanel = %EnzymePanel
-@onready var molecule_panel: ConcentrationPanel = %MoleculePanel
-@onready var gene_panel: GenePanel = %GenePanel
-@onready var chart_panel: ChartPanel = %ChartPanel
+## Content panels - created dynamically
+var cell_content: RichTextLabel = null
+var reactions_content: RichTextLabel = null
+var enzyme_panel: ConcentrationPanel = null
+var molecule_panel: ConcentrationPanel = null
+var gene_panel: GenePanel = null
+var chart_panel: ChartPanel = null
 
 #endregion
 
@@ -90,6 +90,7 @@ func _ready() -> void:
 	_setup_isolate_menu()
 	_cache_docks()
 	_setup_drop_indicator()
+	_create_content_panels()
 	
 	await get_tree().process_frame
 	
@@ -150,6 +151,40 @@ func _setup_drop_indicator() -> void:
 	drop_indicator.add_theme_stylebox_override("panel", style)
 	
 	add_child(drop_indicator)
+
+func _create_content_panels() -> void:
+	## Create content for Cell panel
+	cell_content = RichTextLabel.new()
+	cell_content.bbcode_enabled = true
+	cell_content.fit_content = true
+	cell_content.scroll_following = true
+	cell_content.add_theme_font_size_override("normal_font_size", 12)
+	cell_dock.get_content_container().add_child(cell_content)
+	
+	## Create content for Reactions panel
+	reactions_content = RichTextLabel.new()
+	reactions_content.bbcode_enabled = true
+	reactions_content.fit_content = true
+	reactions_content.scroll_following = true
+	reactions_content.add_theme_font_size_override("normal_font_size", 12)
+	reactions_dock.get_content_container().add_child(reactions_content)
+	
+	## Create Enzyme concentration panel
+	enzyme_panel = ConcentrationPanel.new()
+	enzymes_dock.get_content_container().add_child(enzyme_panel)
+	
+	## Create Molecule concentration panel
+	molecule_panel = ConcentrationPanel.new()
+	molecules_dock.get_content_container().add_child(molecule_panel)
+	
+	## Create Gene expression panel
+	gene_panel = GenePanel.new()
+	genes_dock.get_content_container().add_child(gene_panel)
+	
+	## Create Chart panel
+	chart_panel = ChartPanel.new()
+	chart_panel.custom_minimum_size = Vector2(0, 300)
+	chart_dock.get_content_container().add_child(chart_panel)
 
 func _connect_signals() -> void:
 	if not sim_engine:
