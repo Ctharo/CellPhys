@@ -825,12 +825,12 @@ func _toggle_panel(panel_name_key: String, popup: PopupMenu, index: int) -> void
 	popup.set_item_checked(index, panel_visibility[panel_name_key])
 	_apply_panel_visibility()
 
-func _on_panel_visibility_changed(pname: String, is_visible: bool) -> void:
-	panel_visibility[pname] = is_visible
+func _on_panel_visibility_changed(pname: String, p_is_visible: bool) -> void:
+	panel_visibility[pname] = p_is_visible
 	var popup = view_menu.get_popup()
 	var indices = {"cell": 0, "reactions": 1, "enzymes": 2, "molecules": 3, "genes": 4, "chart": 5}
 	if indices.has(pname):
-		popup.set_item_checked(indices[pname], is_visible)
+		popup.set_item_checked(indices[pname], p_is_visible)
 
 func _on_chart_mode_changed(index: int) -> void:
 	chart_mode = index as ChartMode
