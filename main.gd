@@ -658,7 +658,7 @@ func _update_cell_panel(data: Dictionary) -> void:
 	if not cell_content or not cell_dock.visible:
 		return
 	
-	var cell: Cell = data.get("cell")
+	var cell: CellData = data.get("cell")
 	if not cell:
 		return
 	

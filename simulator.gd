@@ -1,6 +1,6 @@
 ## Core simulation engine with DECOUPLED subsystems
+## Uses Resource-based data classes for save/load support
 ## Each system is orthogonal - can be disabled without breaking others
-## Systems communicate via signals, not direct mutation
 class_name Simulator
 extends Node
 
@@ -11,10 +11,10 @@ signal simulation_started()
 signal simulation_stopped()
 
 ## Entity lifecycle signals
-signal molecule_added(molecule: Molecule)
-signal enzyme_added(enzyme: Enzyme)
-signal gene_added(gene: Gene)
-signal enzyme_depleted(enzyme: Enzyme)
+signal molecule_added(molecule: MoleculeData)
+signal enzyme_added(enzyme: EnzymeData)
+signal gene_added(gene: GeneData)
+signal enzyme_depleted(enzyme: EnzymeData)
 
 ## Category lock signals (for reactive UI)
 signal molecules_lock_changed(locked: bool)
@@ -24,43 +24,48 @@ signal reactions_lock_changed(locked: bool)
 signal mutations_lock_changed(locked: bool)
 signal evolution_lock_changed(locked: bool)
 
-## Subsystem output signals - these are the ONLY way systems affect each other
+## Subsystem output signals
 signal concentration_deltas_calculated(deltas: Dictionary)
 signal enzyme_synthesis_calculated(synthesis: Dictionary)
 signal enzyme_degradation_calculated(degradation: Dictionary)
 signal mutations_generated(result: MutationSystem.MutationResult)
 signal selection_calculated(result: EvolutionSystem.SelectionResult)
 
-## Mutation event signals (for UI/logging)
+## Mutation event signals
 signal mutation_applied(mutation_type: String, details: Dictionary)
 signal selection_applied(selection_type: String, details: Dictionary)
+
+## Save/Load signals
+signal snapshot_saved(path: String)
+signal snapshot_loaded(path: String)
+signal pathway_loaded(preset: PathwayPreset)
 
 #endregion
 
 #region Configuration
 
 @export var time_scale: float = 1.0
-@export var paused: bool = true  ## Start paused until user clicks play
-@export var auto_generate: bool = false  ## Don't auto-generate on ready
+@export var paused: bool = true
+@export var auto_generate: bool = false
 
 #endregion
 
 #region Simulation State
 
-var is_initialized: bool = false  ## Whether the simulation has been set up
-var is_running: bool = false  ## Whether simulation is actively running
+var is_initialized: bool = false
+var is_running: bool = false
 
 #endregion
 
-#region Category Locks - Makes Systems Independent
+#region Category Locks
 
 var _lock_molecules: bool = false
 var _lock_enzymes: bool = false
 var _lock_genes: bool = false
 var _lock_reactions: bool = false
-var _lock_mutations: bool = true  ## Start with mutations locked
+var _lock_mutations: bool = true
+var _lock_evolution: bool = true
 
-## When locked, molecule concentrations won't change (ignores reaction deltas)
 var lock_molecules: bool:
 	get: return _lock_molecules
 	set(value):
@@ -68,7 +73,6 @@ var lock_molecules: bool:
 			_lock_molecules = value
 			molecules_lock_changed.emit(value)
 
-## When locked, enzyme concentrations won't change (ignores synthesis/degradation)
 var lock_enzymes: bool:
 	get: return _lock_enzymes
 	set(value):
@@ -76,7 +80,6 @@ var lock_enzymes: bool:
 			_lock_enzymes = value
 			enzymes_lock_changed.emit(value)
 
-## When locked, genes won't calculate synthesis (synthesis dict will be empty)
 var lock_genes: bool:
 	get: return _lock_genes
 	set(value):
@@ -84,7 +87,6 @@ var lock_genes: bool:
 			_lock_genes = value
 			genes_lock_changed.emit(value)
 
-## When locked, reactions won't calculate deltas (deltas dict will be empty)
 var lock_reactions: bool:
 	get: return _lock_reactions
 	set(value):
@@ -92,7 +94,6 @@ var lock_reactions: bool:
 			_lock_reactions = value
 			reactions_lock_changed.emit(value)
 
-## When locked, no mutations will be generated or applied
 var lock_mutations: bool:
 	get: return _lock_mutations
 	set(value):
@@ -100,9 +101,6 @@ var lock_mutations: bool:
 			_lock_mutations = value
 			mutations_lock_changed.emit(value)
 
-var _lock_evolution: bool = true  ## Start with evolution locked
-
-## When locked, no selection pressure will be applied
 var lock_evolution: bool:
 	get: return _lock_evolution
 	set(value):
@@ -112,13 +110,13 @@ var lock_evolution: bool:
 
 #endregion
 
-#region Core Data - Shared State (Read-Only for subsystems)
+#region Core Data - Resource-based
 
-var molecules: Dictionary = {}  ## {name: Molecule}
-var enzymes: Dictionary = {}    ## {id: Enzyme}
-var reactions: Array[Reaction] = []
-var genes: Dictionary = {}      ## {id: Gene}
-var cell: Cell = null
+var molecules: Dictionary = {}  ## {name: MoleculeData}
+var enzymes: Dictionary = {}    ## {id: EnzymeData}
+var reactions: Array[ReactionData] = []
+var genes: Dictionary = {}      ## {id: GeneData}
+var cell: CellData = null
 
 #endregion
 
@@ -134,19 +132,17 @@ var evolution_system: EvolutionSystem = null
 var simulation_time: float = 0.0
 var total_enzyme_synthesized: float = 0.0
 var total_enzyme_degraded: float = 0.0
-
-## Mutation statistics
 var total_mutations: int = 0
-var mutation_history: Array[Dictionary] = []  ## Recent mutation events
+var mutation_history: Array[Dictionary] = []
 var max_mutation_history: int = 50
 
 #endregion
 
-#region History (for charting)
+#region History
 
 var history_length: int = 500
-var molecule_history: Dictionary = {}  ## {name: Array[float]}
-var enzyme_history: Dictionary = {}    ## {id: Array[float]}
+var molecule_history: Dictionary = {}
+var enzyme_history: Dictionary = {}
 var time_history: Array[float] = []
 
 #endregion
@@ -154,13 +150,10 @@ var time_history: Array[float] = []
 #region Initialization
 
 func _ready() -> void:
-	cell = Cell.new()
+	cell = CellData.create_new()
 	mutation_system = MutationSystem.new()
 	evolution_system = EvolutionSystem.new()
-	
-	## Don't auto-generate - wait for user to start
 
-## Initialize and start the simulation with random system
 func start_simulation() -> void:
 	if not is_initialized:
 		_generate_random_system()
@@ -170,13 +163,11 @@ func start_simulation() -> void:
 	is_running = true
 	simulation_started.emit()
 
-## Stop the simulation
 func stop_simulation() -> void:
 	paused = true
 	is_running = false
 	simulation_stopped.emit()
 
-## Check if simulation has been initialized
 func has_data() -> bool:
 	return is_initialized and not molecules.is_empty()
 
@@ -184,21 +175,19 @@ func _generate_random_system() -> void:
 	var num_molecules = randi_range(4, 6)
 	var num_enzymes = randi_range(3, 5)
 	
-	## Generate molecules
 	var mol_names: Array[String] = []
 	for i in range(num_molecules):
-		var mol = Molecule.new(Molecule.generate_random_name(), randf_range(0.5, 5.0))
-		while molecules.has(mol.name):
-			mol.name = Molecule.generate_random_name()
+		var mol = MoleculeData.create_random()
+		while molecules.has(mol.molecule_name):
+			mol.molecule_name = MoleculeData.generate_random_name()
 		add_molecule(mol)
-		mol_names.append(mol.name)
+		mol_names.append(mol.molecule_name)
 	
-	## Generate enzymes with reactions and genes
 	for i in range(num_enzymes):
 		var enz_name = "Enz_%d" % (i + 1)
-		var enzyme = Enzyme.new("enz_%d" % i, enz_name)
+		var enzyme = EnzymeData.new("enz_%d" % i, enz_name)
 		
-		var rxn = Reaction.new("rxn_%d" % i)
+		var rxn = ReactionData.new("rxn_%d" % i)
 		
 		if i == 0:
 			rxn.products[mol_names[0]] = 1.0
@@ -238,18 +227,18 @@ func _generate_random_system() -> void:
 
 #region Entity Management
 
-func add_molecule(molecule: Molecule) -> void:
-	molecules[molecule.name] = molecule
-	molecule_history[molecule.name] = []
+func add_molecule(molecule: MoleculeData) -> void:
+	molecules[molecule.molecule_name] = molecule
+	molecule_history[molecule.molecule_name] = []
 	molecule_added.emit(molecule)
 
 func remove_molecule(mol_name: String) -> void:
 	molecules.erase(mol_name)
 	molecule_history.erase(mol_name)
 
-func add_enzyme(enzyme: Enzyme) -> void:
-	enzymes[enzyme.id] = enzyme
-	enzyme_history[enzyme.id] = []
+func add_enzyme(enzyme: EnzymeData) -> void:
+	enzymes[enzyme.enzyme_id] = enzyme
+	enzyme_history[enzyme.enzyme_id] = []
 	enzyme_added.emit(enzyme)
 
 func remove_enzyme(id: String) -> void:
@@ -258,21 +247,21 @@ func remove_enzyme(id: String) -> void:
 	enzymes.erase(id)
 	enzyme_history.erase(id)
 
-func add_gene(gene: Gene) -> void:
+func add_gene(gene: GeneData) -> void:
 	genes[gene.enzyme_id] = gene
 	gene_added.emit(gene)
 
-func create_gene_for_enzyme(enzyme: Enzyme, basal_rate: float = 0.0001) -> Gene:
-	var gene = Gene.new(Gene.generate_name_for_enzyme(enzyme.name), enzyme.id, basal_rate)
+func create_gene_for_enzyme(enzyme: EnzymeData, basal_rate: float = 0.0001) -> GeneData:
+	var gene = GeneData.new(GeneData.generate_name_for_enzyme(enzyme.enzyme_name), enzyme.enzyme_id, basal_rate)
 	add_gene(gene)
 	return gene
 
-func get_all_reactions() -> Array[Reaction]:
+func get_all_reactions() -> Array[ReactionData]:
 	return reactions
 
 #endregion
 
-#region Simulation Loop - Orchestrates Independent Subsystems
+#region Simulation Loop
 
 func _process(delta: float) -> void:
 	if paused or not cell.is_alive or not is_initialized:
@@ -281,47 +270,26 @@ func _process(delta: float) -> void:
 	var scaled_delta = delta * time_scale
 	simulation_time += scaled_delta
 	
-	## Take a SNAPSHOT of current state for subsystems to read
 	var state_snapshot = _create_state_snapshot()
 	
-	## ═══════════════════════════════════════════════════════════════════
-	## PHASE 1: Calculate (each system reads snapshot, outputs deltas)
-	## Systems are INDEPENDENT - they don't modify shared state yet
-	## ═══════════════════════════════════════════════════════════════════
-	
-	## Reaction system: calculates concentration deltas
+	## Phase 1: Calculate
 	var concentration_deltas = _calculate_reaction_deltas(state_snapshot, scaled_delta)
-	
-	## Gene system: calculates enzyme synthesis amounts
 	var synthesis_amounts = _calculate_gene_synthesis(state_snapshot, scaled_delta)
-	
-	## Enzyme system: calculates degradation amounts
 	var degradation_amounts = _calculate_enzyme_degradation(state_snapshot, scaled_delta)
-	
-	## Mutation system: calculates mutations (new enzymes, parameter changes, etc)
 	var mutation_result = _calculate_mutations(state_snapshot, scaled_delta)
-	
-	## Evolution system: calculates fitness and selection pressure
 	var selection_result = _calculate_selection(state_snapshot, scaled_delta)
 	
-	## ═══════════════════════════════════════════════════════════════════
-	## PHASE 2: Apply (coordinator applies deltas based on lock state)
-	## Only the coordinator modifies shared state
-	## ═══════════════════════════════════════════════════════════════════
-	
+	## Phase 2: Apply
 	_apply_concentration_deltas(concentration_deltas)
 	_apply_enzyme_changes(synthesis_amounts, degradation_amounts)
 	_apply_mutations(mutation_result)
 	_apply_selection(selection_result)
 	
-	## ═══════════════════════════════════════════════════════════════════
-	## PHASE 3: Update derived state
-	## ═══════════════════════════════════════════════════════════════════
-	
+	## Phase 3: Update derived state
 	cell.update(scaled_delta, reactions)
 	_record_history()
 	
-	## Emit signals for UI
+	## Emit signals
 	concentration_deltas_calculated.emit(concentration_deltas)
 	enzyme_synthesis_calculated.emit(synthesis_amounts)
 	enzyme_degradation_calculated.emit(degradation_amounts)
@@ -333,7 +301,7 @@ func _process(delta: float) -> void:
 
 #endregion
 
-#region State Snapshot - Immutable view for subsystems
+#region State Snapshot
 
 func _create_state_snapshot() -> Dictionary:
 	var mol_concs: Dictionary = {}
@@ -355,14 +323,13 @@ func _create_state_snapshot() -> Dictionary:
 
 #endregion
 
-#region Subsystem: Reactions (Independent)
+#region Subsystem: Reactions
 
 func _calculate_reaction_deltas(snapshot: Dictionary, delta: float) -> Dictionary:
 	var deltas: Dictionary = {}
 	
-	## Always calculate rates for display purposes
 	for enz_id in snapshot.enzymes:
-		var enzyme: Enzyme = snapshot.enzymes[enz_id]
+		var enzyme: EnzymeData = snapshot.enzymes[enz_id]
 		var enz_conc = snapshot.enzyme_concentrations.get(enz_id, 0.0)
 		
 		for reaction in enzyme.reactions:
@@ -386,36 +353,32 @@ func _calculate_reaction_deltas(snapshot: Dictionary, delta: float) -> Dictionar
 	
 	return deltas
 
-func _calculate_reaction_rates(reaction: Reaction, snapshot: Dictionary, enz_conc: float) -> void:
-	var temp_molecules: Dictionary = {}
-	for mol_name in snapshot.molecules:
-		temp_molecules[mol_name] = snapshot.molecules[mol_name]
-	
-	reaction.calculate_forward_rate(temp_molecules, enz_conc)
-	reaction.calculate_reverse_rate(temp_molecules, enz_conc)
+func _calculate_reaction_rates(reaction: ReactionData, snapshot: Dictionary, enz_conc: float) -> void:
+	reaction.calculate_forward_rate(snapshot.molecules, enz_conc)
+	reaction.calculate_reverse_rate(snapshot.molecules, enz_conc)
 	reaction.calculate_energy_partition(reaction.get_net_rate())
 
 #endregion
 
-#region Subsystem: Gene Expression (Independent)
+#region Subsystem: Gene Expression
 
 func _calculate_gene_synthesis(snapshot: Dictionary, delta: float) -> Dictionary:
 	var synthesis: Dictionary = {}
 	
 	for gene_id in snapshot.genes:
-		var gene: Gene = snapshot.genes[gene_id]
+		var gene: GeneData = snapshot.genes[gene_id]
 		gene.calculate_expression_rate(snapshot.molecules)
 	
 	if lock_genes:
 		return synthesis
 	
 	for gene_id in snapshot.genes:
-		var gene: Gene = snapshot.genes[gene_id]
+		var gene: GeneData = snapshot.genes[gene_id]
 		
 		if not snapshot.enzymes.has(gene.enzyme_id):
 			continue
 		
-		var enzyme: Enzyme = snapshot.enzymes[gene.enzyme_id]
+		var enzyme: EnzymeData = snapshot.enzymes[gene.enzyme_id]
 		if enzyme.is_locked:
 			continue
 		
@@ -427,7 +390,7 @@ func _calculate_gene_synthesis(snapshot: Dictionary, delta: float) -> Dictionary
 
 #endregion
 
-#region Subsystem: Enzyme Degradation (Independent)
+#region Subsystem: Enzyme Degradation
 
 func _calculate_enzyme_degradation(snapshot: Dictionary, delta: float) -> Dictionary:
 	var degradation: Dictionary = {}
@@ -436,7 +399,7 @@ func _calculate_enzyme_degradation(snapshot: Dictionary, delta: float) -> Dictio
 		return degradation
 	
 	for enz_id in snapshot.enzymes:
-		var enzyme: Enzyme = snapshot.enzymes[enz_id]
+		var enzyme: EnzymeData = snapshot.enzymes[enz_id]
 		
 		if enzyme.is_locked or not enzyme.is_degradable:
 			continue
@@ -453,7 +416,7 @@ func _calculate_enzyme_degradation(snapshot: Dictionary, delta: float) -> Dictio
 
 #endregion
 
-#region Subsystem: Mutations (Independent)
+#region Subsystem: Mutations
 
 func _calculate_mutations(snapshot: Dictionary, delta: float) -> MutationSystem.MutationResult:
 	if lock_mutations:
@@ -463,7 +426,7 @@ func _calculate_mutations(snapshot: Dictionary, delta: float) -> MutationSystem.
 
 #endregion
 
-#region Subsystem: Evolution (Independent)
+#region Subsystem: Evolution
 
 func _calculate_selection(snapshot: Dictionary, delta: float) -> EvolutionSystem.SelectionResult:
 	if lock_evolution:
@@ -473,7 +436,7 @@ func _calculate_selection(snapshot: Dictionary, delta: float) -> EvolutionSystem
 
 #endregion
 
-#region Coordinator: Apply Changes
+#region Apply Changes
 
 func _apply_concentration_deltas(deltas: Dictionary) -> void:
 	if lock_molecules:
@@ -483,7 +446,7 @@ func _apply_concentration_deltas(deltas: Dictionary) -> void:
 		if not molecules.has(mol_name):
 			continue
 		
-		var mol: Molecule = molecules[mol_name]
+		var mol: MoleculeData = molecules[mol_name]
 		if mol.is_locked:
 			continue
 		
@@ -497,7 +460,7 @@ func _apply_enzyme_changes(synthesis: Dictionary, degradation: Dictionary) -> vo
 		if not enzymes.has(enz_id):
 			continue
 		
-		var enzyme: Enzyme = enzymes[enz_id]
+		var enzyme: EnzymeData = enzymes[enz_id]
 		if enzyme.is_locked:
 			continue
 		
@@ -508,7 +471,7 @@ func _apply_enzyme_changes(synthesis: Dictionary, degradation: Dictionary) -> vo
 		if not enzymes.has(enz_id):
 			continue
 		
-		var enzyme: Enzyme = enzymes[enz_id]
+		var enzyme: EnzymeData = enzymes[enz_id]
 		if enzyme.is_locked:
 			continue
 		
@@ -522,14 +485,13 @@ func _apply_mutations(result: MutationSystem.MutationResult) -> void:
 	if lock_mutations or result.is_empty():
 		return
 	
-	## Apply enzyme parameter modifications
+	## Apply enzyme modifications
 	for enz_id in result.enzyme_modifications:
 		if not enzymes.has(enz_id):
 			continue
 		
-		var enzyme: Enzyme = enzymes[enz_id]
+		var enzyme: EnzymeData = enzymes[enz_id]
 		var mods: Dictionary = result.enzyme_modifications[enz_id]
-		
 		_apply_enzyme_modifications(enzyme, mods)
 		
 		mutation_applied.emit("point_mutation", {
@@ -539,74 +501,67 @@ func _apply_mutations(result: MutationSystem.MutationResult) -> void:
 	
 	## Add new enzymes
 	for new_enz_data in result.new_enzymes:
-		var new_enzyme: Enzyme = new_enz_data.enzyme
-		var new_reaction: Reaction = new_enz_data.reaction
-		var new_gene: Gene = new_enz_data.gene
+		var new_enzyme = new_enz_data.enzyme
+		var new_reaction = new_enz_data.reaction
+		var new_gene = new_enz_data.gene
 		
-		## Add to collections
-		enzymes[new_enzyme.id] = new_enzyme
+		enzymes[new_enzyme.id] = _convert_to_enzyme_data(new_enzyme)
 		enzyme_history[new_enzyme.id] = []
-		reactions.append(new_reaction)
-		genes[new_enzyme.id] = new_gene
+		reactions.append(_convert_to_reaction_data(new_reaction))
+		genes[new_enzyme.id] = _convert_to_gene_data(new_gene)
 		
-		## Register in lineage tracker
 		var source_id = new_enz_data.get("source_id", "")
 		evolution_system.register_birth(new_enzyme.id, source_id, simulation_time)
 		
-		## Emit signals
-		enzyme_added.emit(new_enzyme)
-		gene_added.emit(new_gene)
+		enzyme_added.emit(enzymes[new_enzyme.id])
+		gene_added.emit(genes[new_enzyme.id])
 		
 		mutation_applied.emit(new_enz_data.mutation_type, {
 			"enzyme_id": new_enzyme.id,
 			"enzyme_name": new_enzyme.name,
-			"source_id": source_id,
-			"reaction": new_reaction.get_summary()
+			"source_id": source_id
 		})
 	
-	## Apply gene modifications
-	for gene_id in result.gene_modifications:
-		if not genes.has(gene_id):
-			continue
-		
-		var gene: Gene = genes[gene_id]
-		var mods: Dictionary = result.gene_modifications[gene_id]
-		
-		_apply_gene_modifications(gene, mods)
-		
-		mutation_applied.emit("gene_mutation", {
-			"gene_id": gene_id,
-			"modifications": mods
-		})
-	
-	## Add new molecules
-	for new_mol in result.new_molecules:
-		if not molecules.has(new_mol.name):
-			molecules[new_mol.name] = new_mol
-			molecule_history[new_mol.name] = []
-			molecule_added.emit(new_mol)
-			
-			mutation_applied.emit("new_molecule", {
-				"molecule_name": new_mol.name
-			})
-	
-	## Record in history
+	## Record history
 	if not result.is_empty():
 		total_mutations += result.point_mutations + result.duplications + result.novel_creations + result.regulatory_mutations
 		
 		mutation_history.append({
 			"time": result.timestamp,
-			"summary": result.get_summary(),
-			"point": result.point_mutations,
-			"dup": result.duplications,
-			"novel": result.novel_creations,
-			"reg": result.regulatory_mutations
+			"summary": result.get_summary()
 		})
 		
 		while mutation_history.size() > max_mutation_history:
 			mutation_history.pop_front()
 
-func _apply_enzyme_modifications(enzyme: Enzyme, mods: Dictionary) -> void:
+func _convert_to_enzyme_data(enz: Enzyme) -> EnzymeData:
+	## Convert old Enzyme to new EnzymeData
+	var data = EnzymeData.new(enz.id, enz.name)
+	data.concentration = enz.concentration
+	data.initial_concentration = enz.initial_concentration
+	data.half_life = enz.half_life
+	data.is_degradable = enz.is_degradable
+	data.is_locked = enz.is_locked
+	data._update_degradation_rate()
+	return data
+
+func _convert_to_reaction_data(rxn: Reaction) -> ReactionData:
+	var data = ReactionData.new(rxn.id, rxn.name)
+	data.substrates = rxn.substrates.duplicate()
+	data.products = rxn.products.duplicate()
+	data.vmax = rxn.vmax
+	data.km = rxn.km
+	data.reaction_efficiency = rxn.reaction_efficiency
+	data.delta_g = rxn.delta_g
+	data.is_irreversible = rxn.is_irreversible
+	return data
+
+func _convert_to_gene_data(g: Gene) -> GeneData:
+	var data = GeneData.new(g.id, g.enzyme_id, g.basal_rate)
+	data.is_active = g.is_active
+	return data
+
+func _apply_enzyme_modifications(enzyme: EnzymeData, mods: Dictionary) -> void:
 	if enzyme.reactions.is_empty():
 		return
 	
@@ -624,55 +579,19 @@ func _apply_enzyme_modifications(enzyme: Enzyme, mods: Dictionary) -> void:
 		enzyme.half_life = mods.half_life
 		enzyme._update_degradation_rate()
 
-func _apply_gene_modifications(gene: Gene, mods: Dictionary) -> void:
-	if mods.has("basal_rate"):
-		gene.basal_rate = mods.basal_rate
-	
-	if mods.has("activator_mod"):
-		var act_mod = mods.activator_mod
-		var idx = act_mod.index
-		if idx < gene.activators.size():
-			var act = gene.activators[idx]
-			act.kd = act_mod.kd
-			act.max_fold_change = act_mod.max_fold
-			act.hill_coefficient = act_mod.hill
-	
-	if mods.has("repressor_mod"):
-		var rep_mod = mods.repressor_mod
-		var idx = rep_mod.index
-		if idx < gene.repressors.size():
-			var rep = gene.repressors[idx]
-			rep.kd = rep_mod.kd
-			rep.max_fold_change = rep_mod.max_fold
-			rep.hill_coefficient = rep_mod.hill
-	
-	if mods.has("new_activator"):
-		var new_act = mods.new_activator
-		gene.add_activator(new_act.molecule, new_act.kd, new_act.max_fold, new_act.hill)
-	
-	if mods.has("new_repressor"):
-		var new_rep = mods.new_repressor
-		gene.add_repressor(new_rep.molecule, new_rep.kd, new_rep.max_fold, new_rep.hill)
-
 func _apply_selection(result: EvolutionSystem.SelectionResult) -> void:
 	if lock_evolution or result.is_empty():
 		return
 	
-	## Apply eliminations (remove low-fitness enzymes)
 	for enz_id in result.eliminations:
 		if not enzymes.has(enz_id):
 			continue
 		
-		var enzyme: Enzyme = enzymes[enz_id]
-		var reason: String = result.eliminations[enz_id]
-		
-		## Record death in lineage
 		evolution_system.register_death(enz_id, simulation_time)
 		
-		## Remove enzyme and associated data
-		var rxn_to_remove: Reaction = null
+		var rxn_to_remove: ReactionData = null
 		for rxn in reactions:
-			if rxn.enzyme == enzyme:
+			if enzymes.has(enz_id) and rxn.enzyme == enzymes[enz_id]:
 				rxn_to_remove = rxn
 				break
 		
@@ -684,61 +603,17 @@ func _apply_selection(result: EvolutionSystem.SelectionResult) -> void:
 		genes.erase(enz_id)
 		evolution_system.clear_history_for(enz_id)
 		
-		selection_applied.emit("elimination", {
-			"enzyme_id": enz_id,
-			"reason": reason
-		})
+		selection_applied.emit("elimination", {"enzyme_id": enz_id})
 	
-	## Apply expression boosts (increase basal rate for high-fitness enzymes)
 	for enz_id in result.boosts:
 		if not genes.has(enz_id):
 			continue
 		
-		var gene: Gene = genes[enz_id]
+		var gene: GeneData = genes[enz_id]
 		var boost_factor: float = result.boosts[enz_id]
+		gene.basal_rate = clampf(gene.basal_rate * boost_factor, 1e-6, 0.01)
 		
-		gene.basal_rate *= boost_factor
-		gene.basal_rate = clampf(gene.basal_rate, 1e-6, 0.01)
-		
-		selection_applied.emit("boost", {
-			"enzyme_id": enz_id,
-			"boost_factor": boost_factor,
-			"new_basal_rate": gene.basal_rate
-		})
-	
-	## Apply competition losses (reduce expression of losing enzymes)
-	for loser_id in result.competition_losses:
-		if not genes.has(loser_id):
-			continue
-		
-		var gene: Gene = genes[loser_id]
-		var winner_id: String = result.competition_losses[loser_id]
-		
-		## Reduce basal rate by 30%
-		gene.basal_rate *= 0.7
-		gene.basal_rate = max(gene.basal_rate, 1e-6)
-		
-		selection_applied.emit("competition_loss", {
-			"loser_id": loser_id,
-			"winner_id": winner_id,
-			"new_basal_rate": gene.basal_rate
-		})
-	
-	## Apply adaptive gene regulation adjustments
-	for gene_id in result.gene_adjustments:
-		if not genes.has(gene_id):
-			continue
-		
-		var gene: Gene = genes[gene_id]
-		var adjustments: Dictionary = result.gene_adjustments[gene_id]
-		
-		if adjustments.has("basal_rate"):
-			gene.basal_rate = adjustments.basal_rate
-		
-		selection_applied.emit("regulation_adjustment", {
-			"gene_id": gene_id,
-			"adjustments": adjustments
-		})
+		selection_applied.emit("boost", {"enzyme_id": enz_id, "boost_factor": boost_factor})
 
 #endregion
 
@@ -765,6 +640,55 @@ func _record_history() -> void:
 
 #endregion
 
+#region Save/Load
+
+## Save current state to a snapshot file
+func save_snapshot(path: String, name: String = "", description: String = "") -> Error:
+	var snapshot = SimulationSnapshot.capture_from(self)
+	snapshot.snapshot_name = name if name != "" else "Snapshot %s" % Time.get_datetime_string_from_system()
+	snapshot.description = description
+	
+	var err = snapshot.save_to_file(path)
+	if err == OK:
+		snapshot_saved.emit(path)
+	return err
+
+## Load state from a snapshot file
+func load_snapshot(path: String) -> Error:
+	var snapshot = SimulationSnapshot.load_from_file(path)
+	if not snapshot:
+		return ERR_FILE_NOT_FOUND
+	
+	snapshot.restore_to(self)
+	snapshot_loaded.emit(path)
+	return OK
+
+## Load a pathway preset
+func load_pathway(preset: PathwayPreset) -> void:
+	preset.apply_to(self)
+	pathway_loaded.emit(preset)
+
+## Load a built-in pathway by name
+func load_builtin_pathway(pathway_name: String) -> void:
+	var preset: PathwayPreset
+	
+	match pathway_name.to_lower():
+		"linear", "linear_pathway":
+			preset = PathwayPreset.create_linear_pathway()
+		"feedback", "feedback_inhibition":
+			preset = PathwayPreset.create_feedback_inhibition()
+		"branched", "branched_pathway":
+			preset = PathwayPreset.create_branched_pathway()
+		"oscillator", "metabolic_oscillator":
+			preset = PathwayPreset.create_oscillator()
+		_:
+			push_error("Unknown builtin pathway: %s" % pathway_name)
+			return
+	
+	load_pathway(preset)
+
+#endregion
+
 #region Control
 
 func set_paused(p: bool) -> void:
@@ -780,26 +704,21 @@ func reset() -> void:
 	total_mutations = 0
 	mutation_history.clear()
 	
-	## Clear all entities
 	molecules.clear()
 	enzymes.clear()
 	reactions.clear()
 	genes.clear()
 	
-	## Clear history
 	time_history.clear()
 	molecule_history.clear()
 	enzyme_history.clear()
 	
-	## Reset cell
-	cell = Cell.new()
+	cell = CellData.create_new()
 	
-	## Mark as not initialized so we regenerate on next start
 	is_initialized = false
 	is_running = false
 	paused = true
 
-## Lock all categories except the specified one (for isolated testing)
 func isolate_system(system: String) -> void:
 	lock_molecules = system != "molecules"
 	lock_enzymes = system != "enzymes"
@@ -866,7 +785,7 @@ func get_protein_expression_stats() -> Dictionary:
 	}
 	
 	for gene_id in genes:
-		var gene: Gene = genes[gene_id]
+		var gene: GeneData = genes[gene_id]
 		if gene.is_active:
 			stats.active_genes += 1
 		if gene.is_upregulated():
@@ -903,46 +822,7 @@ func get_evolution_stats() -> Dictionary:
 		"elite_count": fitness_summary.elite_count,
 		"struggling_count": fitness_summary.struggling_count,
 		"generation": fitness_summary.generation,
-		"fitness_ranking": fitness_ranking,
-		"selection_rates": {
-			"selection": evolution_system.selection_rate,
-			"elimination": evolution_system.elimination_rate,
-			"boost": evolution_system.boost_rate
-		},
-		"thresholds": {
-			"elimination": evolution_system.elimination_threshold,
-			"boost": evolution_system.boost_threshold
-		}
+		"fitness_ranking": fitness_ranking
 	}
-
-func get_gene_regulation_summary() -> String:
-	var lines: Array[String] = []
-	lines.append("=== Gene Regulation Summary ===")
-	
-	for gene_id in genes:
-		var gene: Gene = genes[gene_id]
-		var enzyme: Enzyme = enzymes.get(gene.enzyme_id)
-		if not enzyme:
-			continue
-		
-		var status = "●" if gene.is_active else "○"
-		var fold = gene.get_fold_change()
-		var arrow = "↑" if fold > 1.1 else ("↓" if fold < 0.9 else "→")
-		
-		lines.append("%s %s → %s: %.2fx %s [%.4f mM]" % [
-			status, gene.name, enzyme.name, fold, arrow, enzyme.concentration
-		])
-		
-		if not gene.activators.is_empty():
-			for act in gene.activators:
-				var occ = act.get_occupancy(molecules) * 100.0
-				lines.append("    + %s (%.0f%% occupied)" % [act.molecule_name, occ])
-		
-		if not gene.repressors.is_empty():
-			for rep in gene.repressors:
-				var occ = rep.get_occupancy(molecules) * 100.0
-				lines.append("    - %s (%.0f%% occupied)" % [rep.molecule_name, occ])
-	
-	return "\n".join(lines)
 
 #endregion

@@ -1,6 +1,6 @@
 ## Reusable panel for displaying and editing concentrations
-## Used for both enzymes and molecules
-## Features: editable spinbox, unit conversion, lock only affects simulation (not manual edits)
+## Works with MoleculeData and EnzymeData Resources
+## Features: editable spinbox, unit conversion, lock only affects simulation
 class_name ConcentrationPanel
 extends VBoxContainer
 
@@ -17,7 +17,7 @@ const UNIT_MULTIPLIERS: Array[float] = [1.0, 1000.0, 1000000.0, 1000000000.0]
 #endregion
 
 var item_entries: Dictionary = {}  ## {id: ItemEntry}
-var category_locked: bool = false  ## Whether the entire category is locked (simulation only)
+var category_locked: bool = false
 var default_item_type: String = "molecule"
 
 class ItemEntry:
@@ -30,10 +30,10 @@ class ItemEntry:
 	var info_label: Label
 	var id: String
 	var display_name: String
-	var current_unit: int = 0  ## Unit.MILLIMOLAR
-	var base_value_mm: float = 0.0  ## Always store in mM internally
+	var current_unit: int = 0
+	var base_value_mm: float = 0.0
 	var item_type: String = "molecule"
-	var is_updating: bool = false  ## Prevent recursive updates
+	var is_updating: bool = false
 
 #region Setup
 
@@ -56,9 +56,7 @@ func setup_items(items: Array, item_type: String) -> void:
 	for item in items:
 		_create_item_entry(item, item_type)
 
-## Add a single item dynamically (for reactive updates)
 func add_item(item, item_type: String) -> void:
-	## Remove "no items" label if present
 	if item_entries.is_empty() and get_child_count() > 0:
 		var first_child = get_child(0)
 		if first_child is Label:
@@ -70,26 +68,41 @@ func _create_item_entry(item, item_type: String) -> void:
 	var entry = ItemEntry.new()
 	entry.item_type = item_type
 	
-	## Get item properties based on type
 	var item_id: String
 	var item_name: String
 	var item_conc: float
 	var item_locked: bool
 	var extra_info: String = ""
 	
+	## Handle both old classes and new Resource classes
 	if item_type == "enzyme":
-		item_id = item.id
-		item_name = item.name
-		item_conc = item.concentration
-		item_locked = item.is_locked
-		var degrade_str = "t½=%.0fs" % item.half_life if item.is_degradable else "stable"
-		extra_info = "(%s, %d rxn)" % [degrade_str, item.reactions.size()]
+		if item is EnzymeData:
+			item_id = item.enzyme_id
+			item_name = item.enzyme_name
+			item_conc = item.concentration
+			item_locked = item.is_locked
+			var degrade_str = "t½=%.0fs" % item.half_life if item.is_degradable else "stable"
+			extra_info = "(%s, %d rxn)" % [degrade_str, item.reactions.size()]
+		else:  ## Legacy Enzyme class
+			item_id = item.id
+			item_name = item.name
+			item_conc = item.concentration
+			item_locked = item.is_locked
+			var degrade_str = "t½=%.0fs" % item.half_life if item.is_degradable else "stable"
+			extra_info = "(%s, %d rxn)" % [degrade_str, item.reactions.size()]
 	else:  ## molecule
-		item_id = item.name
-		item_name = item.name
-		item_conc = item.concentration
-		item_locked = item.is_locked
-		extra_info = "(E=%.0f kJ/mol)" % item.potential_energy
+		if item is MoleculeData:
+			item_id = item.molecule_name
+			item_name = item.molecule_name
+			item_conc = item.concentration
+			item_locked = item.is_locked
+			extra_info = "(E=%.0f kJ/mol)" % item.potential_energy
+		else:  ## Legacy Molecule class
+			item_id = item.name
+			item_name = item.name
+			item_conc = item.concentration
+			item_locked = item.is_locked
+			extra_info = "(E=%.0f kJ/mol)" % item.potential_energy
 	
 	entry.id = item_id
 	entry.display_name = item_name
@@ -99,7 +112,7 @@ func _create_item_entry(item, item_type: String) -> void:
 	entry.container = HBoxContainer.new()
 	entry.container.add_theme_constant_override("separation", 6)
 	
-	## Lock checkbox - now just marks for simulation lock, not edit lock
+	## Lock checkbox
 	entry.lock_button = CheckBox.new()
 	entry.lock_button.button_pressed = item_locked
 	entry.lock_button.tooltip_text = "Lock from simulation changes (still manually editable)"
@@ -125,7 +138,7 @@ func _create_item_entry(item, item_type: String) -> void:
 	entry.slider.value_changed.connect(_on_slider_changed.bind(item_id))
 	entry.container.add_child(entry.slider)
 	
-	## SpinBox for precise numerical input
+	## SpinBox
 	entry.spinbox = SpinBox.new()
 	entry.spinbox.custom_minimum_size = Vector2(90, 0)
 	entry.spinbox.min_value = 0.0
@@ -159,39 +172,34 @@ func _create_item_entry(item, item_type: String) -> void:
 	add_child(entry.container)
 	item_entries[item_id] = entry
 	
-	## Apply initial lock visual state
 	_update_lock_visual(entry, item_locked)
 
 func _get_slider_max_for_unit(item_type: String, unit: int) -> float:
 	var base_max: float
 	if item_type == "enzyme":
-		base_max = 0.1  ## 0.1 mM max for enzymes
+		base_max = 0.1
 	else:
-		base_max = 20.0  ## 20 mM max for molecules
+		base_max = 20.0
 	return base_max * UNIT_MULTIPLIERS[unit]
 
 func _get_spinbox_max_for_unit(item_type: String, unit: int) -> float:
-	## Spinbox allows higher values than slider
 	var base_max: float
 	if item_type == "enzyme":
-		base_max = 1.0  ## 1 mM for spinbox
+		base_max = 1.0
 	else:
-		base_max = 100.0  ## 100 mM for spinbox
+		base_max = 100.0
 	return base_max * UNIT_MULTIPLIERS[unit]
 
 #endregion
 
 #region Unit Conversion
 
-## Convert from mM to the specified unit
 func _mm_to_unit(value_mm: float, unit: int) -> float:
 	return value_mm * UNIT_MULTIPLIERS[unit]
 
-## Convert from specified unit to mM
 func _unit_to_mm(value: float, unit: int) -> float:
 	return value / UNIT_MULTIPLIERS[unit]
 
-## Update step size based on unit
 func _get_step_for_unit(unit: int) -> float:
 	match unit:
 		Unit.MILLIMOLAR:
@@ -216,20 +224,29 @@ func update_values(items: Array, item_type: String) -> void:
 		var item_locked: bool
 		
 		if item_type == "enzyme":
-			item_id = item.id
-			item_conc = item.concentration
-			item_locked = item.is_locked
+			if item is EnzymeData:
+				item_id = item.enzyme_id
+				item_conc = item.concentration
+				item_locked = item.is_locked
+			else:
+				item_id = item.id
+				item_conc = item.concentration
+				item_locked = item.is_locked
 		else:
-			item_id = item.name
-			item_conc = item.concentration
-			item_locked = item.is_locked
+			if item is MoleculeData:
+				item_id = item.molecule_name
+				item_conc = item.concentration
+				item_locked = item.is_locked
+			else:
+				item_id = item.name
+				item_conc = item.concentration
+				item_locked = item.is_locked
 		
 		if not item_entries.has(item_id):
 			continue
 		
 		var entry: ItemEntry = item_entries[item_id]
 		
-		## Only update from simulation if not locked and not being edited
 		if not item_locked and not entry.spinbox.has_focus() and not entry.slider.has_focus():
 			entry.is_updating = true
 			entry.base_value_mm = item_conc
@@ -238,8 +255,6 @@ func update_values(items: Array, item_type: String) -> void:
 			entry.spinbox.set_value_no_signal(display_value)
 			entry.is_updating = false
 
-## Set category-level lock state
-## This only affects whether simulation updates the values, not whether user can edit
 func set_category_locked(locked: bool) -> void:
 	category_locked = locked
 	for item_id in item_entries:
@@ -247,14 +262,12 @@ func set_category_locked(locked: bool) -> void:
 		_update_category_lock_visual(entry, locked)
 
 func _update_lock_visual(entry: ItemEntry, is_locked: bool) -> void:
-	## Lock icon indicator
 	if is_locked:
 		entry.name_label.add_theme_color_override("font_color", Color(0.8, 0.6, 0.2))
 	else:
 		entry.name_label.remove_theme_color_override("font_color")
 
 func _update_category_lock_visual(entry: ItemEntry, p_category_locked: bool) -> void:
-	## Category lock shows visual indicator but doesn't disable editing
 	if p_category_locked and not entry.lock_button.button_pressed:
 		entry.container.modulate = Color(0.9, 0.8, 0.8)
 	else:
@@ -273,14 +286,9 @@ func _on_slider_changed(value: float, item_id: String) -> void:
 		return
 	
 	entry.is_updating = true
-	
-	## Update spinbox to match
 	entry.spinbox.set_value_no_signal(value)
-	
-	## Convert to mM and emit
 	entry.base_value_mm = _unit_to_mm(value, entry.current_unit)
 	concentration_changed.emit(item_id, entry.base_value_mm)
-	
 	entry.is_updating = false
 
 func _on_spinbox_changed(value: float, item_id: String) -> void:
@@ -292,14 +300,9 @@ func _on_spinbox_changed(value: float, item_id: String) -> void:
 		return
 	
 	entry.is_updating = true
-	
-	## Update slider to match (clamped to slider range)
 	entry.slider.set_value_no_signal(clampf(value, entry.slider.min_value, entry.slider.max_value))
-	
-	## Convert to mM and emit
 	entry.base_value_mm = _unit_to_mm(value, entry.current_unit)
 	concentration_changed.emit(item_id, entry.base_value_mm)
-	
 	entry.is_updating = false
 
 func _on_unit_changed(unit_index: int, item_id: String) -> void:
@@ -308,23 +311,16 @@ func _on_unit_changed(unit_index: int, item_id: String) -> void:
 	
 	var entry: ItemEntry = item_entries[item_id]
 	entry.is_updating = true
-	
-	## Store new unit
 	entry.current_unit = unit_index
-	
-	## Convert the display value to the new unit
 	var new_display_value = _mm_to_unit(entry.base_value_mm, unit_index)
 	
-	## Update slider range and step
 	entry.slider.max_value = _get_slider_max_for_unit(entry.item_type, unit_index)
 	entry.slider.step = _get_step_for_unit(unit_index)
 	entry.slider.set_value_no_signal(clampf(new_display_value, 0.0, entry.slider.max_value))
 	
-	## Update spinbox range and step
 	entry.spinbox.max_value = _get_spinbox_max_for_unit(entry.item_type, unit_index)
 	entry.spinbox.step = _get_step_for_unit(unit_index)
 	entry.spinbox.set_value_no_signal(new_display_value)
-	
 	entry.is_updating = false
 
 func _on_lock_toggled(pressed: bool, item_id: String) -> void:
