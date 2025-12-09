@@ -14,6 +14,7 @@ const DEFAULT_LOCK_ENZYMES: bool = false
 const DEFAULT_LOCK_GENES: bool = false
 const DEFAULT_LOCK_REACTIONS: bool = false
 const DEFAULT_LOCK_MUTATIONS: bool = false
+const DEFAULT_LAYOUT_MODE: int = 0  ## ALL_PANELS
 
 #endregion
 
@@ -40,6 +41,12 @@ var lock_genes: bool = DEFAULT_LOCK_GENES
 var lock_reactions: bool = DEFAULT_LOCK_REACTIONS
 var lock_mutations: bool = DEFAULT_LOCK_MUTATIONS
 
+var layout_mode: int = DEFAULT_LAYOUT_MODE
+
+## Panel positions: stores which column each panel is in and its order
+## Format: {panel_name: {column: int, order: int}}
+var panel_positions: Dictionary = {}
+
 #endregion
 
 #region Save/Load
@@ -62,6 +69,10 @@ func _load_settings() -> void:
 	lock_genes = config.get_value("locks", "genes", DEFAULT_LOCK_GENES)
 	lock_reactions = config.get_value("locks", "reactions", DEFAULT_LOCK_REACTIONS)
 	lock_mutations = config.get_value("locks", "mutations", DEFAULT_LOCK_MUTATIONS)
+	
+	## Load layout
+	layout_mode = config.get_value("layout", "mode", DEFAULT_LAYOUT_MODE)
+	panel_positions = config.get_value("layout", "panel_positions", {})
 
 func save_settings() -> void:
 	var config = ConfigFile.new()
@@ -76,6 +87,10 @@ func save_settings() -> void:
 	config.set_value("locks", "genes", lock_genes)
 	config.set_value("locks", "reactions", lock_reactions)
 	config.set_value("locks", "mutations", lock_mutations)
+	
+	## Save layout
+	config.set_value("layout", "mode", layout_mode)
+	config.set_value("layout", "panel_positions", panel_positions)
 	
 	var err = config.save(SETTINGS_PATH)
 	if err != OK:
@@ -111,6 +126,21 @@ func set_lock_reactions(locked: bool) -> void:
 
 func set_lock_mutations(locked: bool) -> void:
 	lock_mutations = locked
+	save_settings()
+
+func set_layout_mode(mode: int) -> void:
+	layout_mode = mode
+	save_settings()
+
+func set_panel_position(panel_name: String, column_index: int, order: int) -> void:
+	panel_positions[panel_name] = {"column": column_index, "order": order}
+	save_settings()
+
+func get_panel_position(panel_name: String) -> Dictionary:
+	return panel_positions.get(panel_name, {})
+
+func clear_panel_positions() -> void:
+	panel_positions.clear()
 	save_settings()
 
 #endregion

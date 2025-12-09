@@ -84,14 +84,31 @@ func _ready() -> void:
 	_setup_isolate_menu()
 	_cache_docks()
 	_create_content_panels()
+	_create_simulator()
 	
 	await get_tree().process_frame
 	
 	_connect_signals()
 	_connect_drag_drop_signals()
 	_load_persistent_settings()
+	_restore_layout()
 	_show_empty_state()
 	_sync_lock_buttons()
+
+func _create_simulator() -> void:
+	## Create simulator as child node
+	sim_engine = Simulator.new()
+	sim_engine.name = "Simulator"
+	sim_engine.auto_generate = false  ## Don't auto-generate, wait for pathway selection
+	add_child(sim_engine)
+	
+	## Connect simulator signals
+	sim_engine.simulation_updated.connect(_on_simulation_updated)
+	sim_engine.simulation_started.connect(_on_simulation_started)
+	sim_engine.simulation_stopped.connect(_on_simulation_stopped)
+	sim_engine.molecule_added.connect(_on_molecule_added)
+	sim_engine.enzyme_added.connect(_on_enzyme_added)
+	sim_engine.gene_added.connect(_on_gene_added)
 
 func _cache_docks() -> void:
 	all_docks = [cell_dock, enzyme_reaction_dock, molecules_dock, genes_dock, chart_dock]
@@ -180,10 +197,13 @@ func _load_persistent_settings() -> void:
 	var settings = SettingsManager.get_instance()
 	
 	## Apply saved lock states to UI
-	lock_molecules_btn.button_pressed = settings.lock_molecules
-	lock_enzymes_btn.button_pressed = settings.lock_enzymes
-	lock_genes_btn.button_pressed = settings.lock_genes
-	lock_reactions_btn.button_pressed = settings.lock_reactions
+	lock_molecules_btn.set_pressed_no_signal(settings.lock_molecules)
+	lock_enzymes_btn.set_pressed_no_signal(settings.lock_enzymes)
+	lock_genes_btn.set_pressed_no_signal(settings.lock_genes)
+	lock_reactions_btn.set_pressed_no_signal(settings.lock_reactions)
+	
+	## Apply saved layout mode
+	layout_option.selected = settings.layout_mode
 	
 	## Apply to simulation if available
 	if sim_engine:
@@ -192,6 +212,51 @@ func _load_persistent_settings() -> void:
 		sim_engine.lock_genes = settings.lock_genes
 		sim_engine.lock_reactions = settings.lock_reactions
 		sim_engine.lock_mutations = settings.lock_mutations
+
+func _restore_layout() -> void:
+	var settings = SettingsManager.get_instance()
+	
+	## Check if we have saved panel positions
+	if settings.panel_positions.is_empty():
+		## No saved positions, apply default layout
+		_apply_layout(settings.layout_mode as LayoutMode)
+		return
+	
+	## Remove all docks from current parents
+	for dock in all_docks:
+		if dock and dock.get_parent():
+			dock.get_parent().remove_child(dock)
+	
+	## Restore each panel to its saved position
+	var column_panels: Array[Array] = [[], [], []]  ## 3 columns
+	
+	for dock in all_docks:
+		if not dock:
+			continue
+		var pos = settings.get_panel_position(dock.panel_name)
+		if pos.is_empty():
+			## No saved position, use default column 0
+			column_panels[0].append({"dock": dock, "order": 0})
+		else:
+			var col_idx = clampi(pos.get("column", 0), 0, 2)
+			column_panels[col_idx].append({"dock": dock, "order": pos.get("order", 0)})
+	
+	## Sort each column by order and add docks
+	for col_idx in range(3):
+		column_panels[col_idx].sort_custom(func(a, b): return a.order < b.order)
+		for item in column_panels[col_idx]:
+			all_columns[col_idx].add_child(item.dock)
+
+func _save_current_layout() -> void:
+	var settings = SettingsManager.get_instance()
+	
+	for col_idx in range(all_columns.size()):
+		var column = all_columns[col_idx]
+		var order = 0
+		for child in column.get_children():
+			if child is DockPanel:
+				settings.set_panel_position(child.panel_name, col_idx, order)
+				order += 1
 
 #endregion
 
@@ -229,27 +294,8 @@ func _setup_isolate_menu() -> void:
 
 #region Public API
 
-func set_simulator(simulator: Simulator) -> void:
-	sim_engine = simulator
-	
-	if sim_engine:
-		sim_engine.simulation_updated.connect(_on_simulation_updated)
-		sim_engine.molecule_added.connect(_on_molecule_added)
-		sim_engine.enzyme_added.connect(_on_enzyme_added)
-		sim_engine.gene_added.connect(_on_gene_added)
-		
-		## Apply persistent settings to simulator
-		var settings = SettingsManager.get_instance()
-		sim_engine.lock_molecules = settings.lock_molecules
-		sim_engine.lock_enzymes = settings.lock_enzymes
-		sim_engine.lock_genes = settings.lock_genes
-		sim_engine.lock_reactions = settings.lock_reactions
-		sim_engine.lock_mutations = settings.lock_mutations
-		
-		_setup_panels()
-
 func _setup_panels() -> void:
-	if not sim_engine:
+	if not sim_engine or not sim_engine.has_data():
 		return
 	
 	## Setup enzyme/reaction panel
@@ -270,6 +316,19 @@ func _setup_panels() -> void:
 func _show_empty_state() -> void:
 	if cell_content:
 		cell_content.text = "[color=gray]No simulation loaded.\nSelect a pathway to begin.[/color]"
+
+#endregion
+
+#region Simulation Lifecycle
+
+func _on_simulation_started() -> void:
+	is_paused = false
+	_setup_panels()
+	_update_pause_button()
+
+func _on_simulation_stopped() -> void:
+	is_paused = true
+	_update_pause_button()
 
 #endregion
 
@@ -402,6 +461,9 @@ func _on_speed_changed(value: float) -> void:
 	speed_value.text = "%.1fx" % value
 
 func _on_layout_selected(index: int) -> void:
+	## Clear saved panel positions when selecting a preset layout
+	SettingsManager.get_instance().clear_panel_positions()
+	SettingsManager.get_instance().set_layout_mode(index)
 	_apply_layout(index as LayoutMode)
 
 func _on_chart_mode_selected(index: int) -> void:
@@ -531,10 +593,11 @@ func _on_panel_visibility_changed(pname: String, p_is_visible: bool) -> void:
 
 func _on_panel_dropped(source: DockPanel, target_column: Control, at_index: int) -> void:
 	_move_panel_to(source, target_column, at_index)
+	_save_current_layout()
 
 func _on_column_panel_dropped(panel: DockPanel, at_index: int) -> void:
 	## Panel was dropped directly onto column, already handled by column
-	pass
+	_save_current_layout()
 
 func _move_panel_to(panel: DockPanel, target_container: Control, target_index: int) -> void:
 	var old_parent = panel.get_parent()
@@ -557,11 +620,8 @@ func _on_molecule_added(molecule) -> void:
 		molecule_panel.add_item(molecule, "molecule")
 
 func _on_enzyme_added(enzyme) -> void:
-	if enzyme_reaction_panel and sim_engine:
-		var reactions_for_enzyme = sim_engine.reactions.filter(
-			func(r): return r.enzyme_id == enzyme.enzyme_id if "enzyme_id" in r else false
-		)
-		enzyme_reaction_panel.add_enzyme(enzyme, reactions_for_enzyme)
+	if enzyme_reaction_panel:
+		enzyme_reaction_panel.add_enzyme(enzyme)
 
 func _on_gene_added(gene) -> void:
 	if gene_panel and sim_engine:

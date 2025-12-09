@@ -137,29 +137,19 @@ func setup_enzymes_and_reactions(enzymes: Array, reactions: Array) -> void:
 		add_child(empty_label)
 		return
 	
-	## Build enzyme-to-reactions mapping
-	var enzyme_reactions: Dictionary = {}
-	for enzyme in enzymes:
-		var enz_id = _get_enzyme_id(enzyme)
-		enzyme_reactions[enz_id] = []
-	
-	for rxn in reactions:
-		## Find which enzyme catalyzes this reaction
-		var enzyme_id = _get_reaction_enzyme_id(rxn)
-		if enzyme_id != "" and enzyme_reactions.has(enzyme_id):
-			enzyme_reactions[enzyme_id].append(rxn)
-	
 	## Create entries for each enzyme with its reactions
+	## Reactions are stored on the enzyme itself in enzyme.reactions
 	for enzyme in enzymes:
-		var enz_id = _get_enzyme_id(enzyme)
-		var enz_reactions = enzyme_reactions.get(enz_id, [])
+		var enz_reactions = _get_enzyme_reactions(enzyme)
 		_create_enzyme_entry(enzyme, enz_reactions)
 
-func add_enzyme(enzyme, reactions_for_enzyme: Array) -> void:
+func add_enzyme(enzyme, reactions_for_enzyme: Array = []) -> void:
 	var enz_id = _get_enzyme_id(enzyme)
 	if entries.has(enz_id):
 		return
-	_create_enzyme_entry(enzyme, reactions_for_enzyme)
+	## Use reactions from enzyme if not provided
+	var enz_reactions = reactions_for_enzyme if not reactions_for_enzyme.is_empty() else _get_enzyme_reactions(enzyme)
+	_create_enzyme_entry(enzyme, enz_reactions)
 
 func update_values(enzymes: Array, reactions: Array) -> void:
 	for enzyme in enzymes:
@@ -173,9 +163,11 @@ func update_values(enzymes: Array, reactions: Array) -> void:
 		if absf(entry.base_concentration_mm - new_conc) > 0.00001:
 			entry.base_concentration_mm = new_conc
 			_update_entry_display(entry)
-	
-	## Update reaction displays
-	_update_reaction_displays(reactions)
+		
+		## Update reaction displays from enzyme.reactions
+		var enz_reactions = _get_enzyme_reactions(enzyme)
+		for i in range(mini(entry.reaction_labels.size(), enz_reactions.size())):
+			entry.reaction_labels[i].text = _format_reaction(enz_reactions[i])
 
 func set_category_locked(locked: bool) -> void:
 	category_locked = locked
@@ -333,20 +325,6 @@ func _update_all_units() -> void:
 		## Update displayed values
 		_update_entry_display(entry)
 
-func _update_reaction_displays(reactions: Array) -> void:
-	## Build reaction lookup by enzyme
-	var rxn_by_enzyme: Dictionary = {}
-	for rxn in reactions:
-		var enz_id = _get_reaction_enzyme_id(rxn)
-		if not rxn_by_enzyme.has(enz_id):
-			rxn_by_enzyme[enz_id] = []
-		rxn_by_enzyme[enz_id].append(rxn)
-	
-	for entry in entries.values():
-		var enz_reactions = rxn_by_enzyme.get(entry.enzyme_id, [])
-		for i in range(mini(entry.reaction_labels.size(), enz_reactions.size())):
-			entry.reaction_labels[i].text = _format_reaction(enz_reactions[i])
-
 func _update_lock_visual(entry: EnzymeReactionEntry) -> void:
 	var is_locked = entry.lock_button.button_pressed or category_locked
 	var alpha = 0.6 if is_locked else 1.0
@@ -462,6 +440,12 @@ func _get_enzyme_half_life(enzyme) -> float:
 
 func _get_enzyme_degradable(enzyme) -> bool:
 	return enzyme.is_degradable
+
+func _get_enzyme_reactions(enzyme) -> Array:
+	## Reactions are stored directly on the enzyme
+	if "reactions" in enzyme:
+		return enzyme.reactions
+	return []
 
 ## Reaction property accessors
 func _get_reaction_enzyme_id(rxn) -> String:
