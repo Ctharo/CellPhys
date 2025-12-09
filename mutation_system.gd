@@ -95,7 +95,7 @@ func calculate_mutations(snapshot: Dictionary, delta: float, current_time: float
 	
 	## Process each enzyme for potential mutations
 	for enz_id in enzymes:
-		var enzyme: Enzyme = enzymes[enz_id]
+		var enzyme: EnzymeData = enzymes[enz_id]
 		
 		## Point mutations (parameter drift)
 		if _roll(enzyme_mutation_rate * delta):
@@ -120,7 +120,7 @@ func calculate_mutations(snapshot: Dictionary, delta: float, current_time: float
 	
 	## Gene regulation mutations
 	for gene_id in genes:
-		var gene: Gene = genes[gene_id]
+		var gene: GeneData = genes[gene_id]
 		if _roll(gene_mutation_rate * delta):
 			var mods = _generate_gene_mutation(gene, molecules)
 			if not mods.is_empty():
@@ -141,7 +141,7 @@ func calculate_mutations(snapshot: Dictionary, delta: float, current_time: float
 #region Enzyme Point Mutations
 
 ## Generate small parameter changes to an existing enzyme
-func _generate_enzyme_point_mutation(enzyme: Enzyme) -> Dictionary:
+func _generate_enzyme_point_mutation(enzyme: EnzymeData) -> Dictionary:
 	var mods: Dictionary = {}
 	
 	## Pick which parameter(s) to mutate
@@ -176,7 +176,7 @@ func _generate_enzyme_point_mutation(enzyme: Enzyme) -> Dictionary:
 #region Enzyme Duplication
 
 ## Create a copy of an enzyme with variations
-func _generate_enzyme_duplication(source: Enzyme, existing_enzymes: Dictionary, molecules: Dictionary) -> Dictionary:
+func _generate_enzyme_duplication(source: EnzymeData, existing_enzymes: Dictionary, molecules: Dictionary) -> Dictionary:
 	## Create new enzyme
 	var new_id = _generate_unique_id("enz", existing_enzymes)
 	var new_name = source.name + "_v" + str(randi() % 100)
@@ -304,7 +304,7 @@ func _generate_novel_enzyme(existing_enzymes: Dictionary, molecules: Dictionary)
 #region Gene Mutations
 
 ## Generate mutations to gene regulatory elements
-func _generate_gene_mutation(gene: Gene, molecules: Dictionary) -> Dictionary:
+func _generate_gene_mutation(gene: GeneData, molecules: Dictionary) -> Dictionary:
 	var mods: Dictionary = {}
 	var mutation_type = randi() % 4
 	
