@@ -130,7 +130,6 @@ func _create_content_panels() -> void:
 	
 	## Molecule concentrations
 	molecule_panel = ConcentrationPanel.new()
-	molecule_panel.set_panel_title("Molecules")
 	if molecules_dock:
 		molecules_dock.get_content_container().add_child(molecule_panel)
 	
@@ -337,7 +336,6 @@ func _on_simulation_stopped() -> void:
 func _on_simulation_updated(data: Dictionary) -> void:
 	_update_cell_panel(data)
 	_update_enzyme_reaction_panel(data)
-	_update_molecules_panel(data)
 	_update_genes_panel(data)
 	_update_chart(data)
 
@@ -382,12 +380,7 @@ func _update_enzyme_reaction_panel(data: Dictionary) -> void:
 	var reactions: Array = data.get("reactions", [])
 	enzyme_reaction_panel.update_values(enzymes.values(), reactions)
 
-func _update_molecules_panel(data: Dictionary) -> void:
-	if not molecule_panel or not molecules_dock.visible:
-		return
-	
-	var molecules: Dictionary = data.get("molecules", {})
-	molecule_panel.update_values(molecules.values(), "molecule")
+
 
 func _update_genes_panel(data: Dictionary) -> void:
 	if not gene_panel or not genes_dock.visible:
@@ -654,7 +647,7 @@ func _on_gene_toggled(enzyme_id: String, is_active: bool) -> void:
 
 func _on_expression_rate_changed(enzyme_id: String, rate: float) -> void:
 	if sim_engine and sim_engine.genes.has(enzyme_id):
-		sim_engine.genes[enzyme_id].base_expression_rate = rate
+		sim_engine.genes[enzyme_id].basal_rate = rate
 
 #endregion
 

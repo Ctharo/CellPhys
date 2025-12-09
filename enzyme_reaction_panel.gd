@@ -35,7 +35,7 @@ class EnzymeReactionEntry:
 	var lock_button: CheckBox
 	var name_label: Label
 	var slider: HSlider
-	var spinbox: SpinBox
+	var spinbox: ScientificSpinBox
 	var info_label: Label
 	var reaction_container: VBoxContainer
 	var reaction_labels: Array[RichTextLabel] = []
@@ -138,7 +138,6 @@ func setup_enzymes_and_reactions(enzymes: Array, reactions: Array) -> void:
 		return
 	
 	## Create entries for each enzyme with its reactions
-	## Reactions are stored on the enzyme itself in enzyme.reactions
 	for enzyme in enzymes:
 		var enz_reactions = _get_enzyme_reactions(enzyme)
 		_create_enzyme_entry(enzyme, enz_reactions)
@@ -147,7 +146,6 @@ func add_enzyme(enzyme, reactions_for_enzyme: Array = []) -> void:
 	var enz_id = _get_enzyme_id(enzyme)
 	if entries.has(enz_id):
 		return
-	## Use reactions from enzyme if not provided
 	var enz_reactions = reactions_for_enzyme if not reactions_for_enzyme.is_empty() else _get_enzyme_reactions(enzyme)
 	_create_enzyme_entry(enzyme, enz_reactions)
 
@@ -241,9 +239,8 @@ func _create_enzyme_entry(enzyme, reactions_for_enzyme: Array) -> void:
 	entry.slider.value_changed.connect(_on_slider_changed.bind(entry.enzyme_id))
 	entry.header_row.add_child(entry.slider)
 	
-	## Concentration spinbox
-	entry.spinbox = SpinBox.new()
-	entry.spinbox.custom_minimum_size = Vector2(85, 0)
+	## ScientificSpinBox for concentration
+	entry.spinbox = ScientificSpinBox.new()
 	entry.spinbox.min_value = 0.0
 	entry.spinbox.max_value = _get_spinbox_max_for_unit(entry.current_unit)
 	entry.spinbox.step = 0.00001
@@ -251,8 +248,8 @@ func _create_enzyme_entry(enzyme, reactions_for_enzyme: Array) -> void:
 	entry.spinbox.allow_greater = true
 	entry.spinbox.allow_lesser = false
 	entry.spinbox.select_all_on_focus = true
-	entry.spinbox.add_theme_font_size_override("font_size", 11)
 	entry.spinbox.suffix = UNIT_NAMES[entry.current_unit]
+	entry.spinbox.add_theme_font_size_override("font_size", 11)
 	entry.spinbox.value_changed.connect(_on_spinbox_changed.bind(entry.enzyme_id))
 	entry.header_row.add_child(entry.spinbox)
 	
@@ -442,7 +439,6 @@ func _get_enzyme_degradable(enzyme) -> bool:
 	return enzyme.is_degradable
 
 func _get_enzyme_reactions(enzyme) -> Array:
-	## Reactions are stored directly on the enzyme
 	if "reactions" in enzyme:
 		return enzyme.reactions
 	return []

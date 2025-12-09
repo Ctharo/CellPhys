@@ -1,5 +1,5 @@
 ## Reusable panel for displaying and editing concentrations
-## Features: global unit selection, category lock, persistence
+## Features: global unit selection, category lock, persistence, scientific notation
 class_name ConcentrationPanel
 extends VBoxContainer
 
@@ -27,7 +27,7 @@ var panel_title: String = "Concentrations"
 class ItemEntry:
 	var container: HBoxContainer
 	var name_label: Label
-	var spinbox: SpinBox
+	var spinbox: ScientificSpinBox
 	var slider: HSlider
 	var lock_button: CheckBox
 	var info_label: Label
@@ -77,21 +77,16 @@ func _create_header() -> void:
 	
 	global_unit_option = OptionButton.new()
 	global_unit_option.custom_minimum_size = Vector2(60, 0)
-	global_unit_option.add_theme_font_size_override("font_size", 11)
-	for i in range(UNIT_NAMES.size()):
-		global_unit_option.add_item(UNIT_NAMES[i], i)
+	for unit_name in UNIT_NAMES:
+		global_unit_option.add_item(unit_name)
+	global_unit_option.selected = current_global_unit
 	global_unit_option.item_selected.connect(_on_global_unit_changed)
 	header_container.add_child(global_unit_option)
-	
-	## Separator
-	var sep = VSeparator.new()
-	header_container.add_child(sep)
 	
 	## Category lock
 	category_lock_button = CheckBox.new()
 	category_lock_button.text = "Lock All"
 	category_lock_button.add_theme_font_size_override("font_size", 11)
-	category_lock_button.tooltip_text = "Lock all items from simulation changes"
 	category_lock_button.toggled.connect(_on_category_lock_toggled)
 	header_container.add_child(category_lock_button)
 	
@@ -113,17 +108,12 @@ func _load_settings() -> void:
 	global_unit_option.selected = current_global_unit
 	category_lock_button.button_pressed = category_locked
 
-func set_panel_title(new_title: String) -> void:
-	panel_title = new_title
-	if title_label:
-		title_label.text = new_title
-
 #endregion
 
-#region Public API
+#region Item Management
 
-func clear() -> void:
-	## Remove all children except header
+func clear_items() -> void:
+	## Remove all children except header and separator
 	var children_to_remove: Array[Node] = []
 	for child in get_children():
 		if child != header_container and child is not HSeparator:
@@ -133,7 +123,8 @@ func clear() -> void:
 	item_entries.clear()
 
 func setup_items(items: Array, item_type: String) -> void:
-	clear()
+	## Clear existing entries
+	clear_items()
 	default_item_type = item_type
 	_load_settings()  ## Reload settings for this item type
 	
@@ -144,43 +135,14 @@ func setup_items(items: Array, item_type: String) -> void:
 		add_child(empty_label)
 		return
 	
+	## Add all items
 	for item in items:
-		_create_item_entry(item, item_type)
+		add_item(item, item_type)
 
-func add_item(item, item_type: String) -> void:
-	if item_entries.is_empty() and get_child_count() > 2:  ## Header + separator
-		var first_content = get_child(2)
-		if first_content is Label:
-			first_content.queue_free()
+func add_item(item, item_type: String = "") -> void:
+	if item_type.is_empty():
+		item_type = default_item_type
 	
-	_create_item_entry(item, item_type)
-
-func update_values(items: Array, item_type: String) -> void:
-	for item in items:
-		var item_id = _get_item_id(item, item_type)
-		if not item_entries.has(item_id):
-			continue
-		
-		var entry = item_entries[item_id] as ItemEntry
-		var new_conc = _get_item_concentration(item)
-		
-		if absf(entry.base_value_mm - new_conc) > 0.00001:
-			entry.base_value_mm = new_conc
-			_update_entry_display(entry)
-
-func set_category_locked(locked: bool) -> void:
-	category_locked = locked
-	category_lock_button.button_pressed = locked
-	
-	for entry in item_entries.values():
-		entry.lock_button.disabled = locked
-		_update_lock_visual(entry)
-
-#endregion
-
-#region Entry Creation
-
-func _create_item_entry(item, item_type: String) -> void:
 	var entry = ItemEntry.new()
 	entry.item_type = item_type
 	entry.current_unit = current_global_unit
@@ -188,10 +150,10 @@ func _create_item_entry(item, item_type: String) -> void:
 	var item_id: String
 	var item_name: String
 	var item_conc: float
-	var item_locked: bool
+	var item_locked: bool = false
 	var extra_info: String = ""
 	
-	## Handle both old and new data classes
+	## Handle different item types
 	if item_type == "enzyme":
 		if item is EnzymeData:
 			item_id = item.enzyme_id
@@ -199,14 +161,14 @@ func _create_item_entry(item, item_type: String) -> void:
 			item_conc = item.concentration
 			item_locked = item.is_locked
 			var degrade_str = "t½=%.0fs" % item.half_life if item.is_degradable else "stable"
-			extra_info = "(%s, %d rxn)" % [degrade_str, item.reactions.size()]
+			extra_info = "(%s)" % degrade_str
 		else:  ## Legacy Enzyme class
-			item_id = item.id
-			item_name = item.name
+			item_id = item.id if "id" in item else item.enzyme_id
+			item_name = item.name if "name" in item else item.enzyme_name
 			item_conc = item.concentration
 			item_locked = item.is_locked
 			var degrade_str = "t½=%.0fs" % item.half_life if item.is_degradable else "stable"
-			extra_info = "(%s, %d rxn)" % [degrade_str, item.reactions.size()]
+			extra_info = "(%s)" % degrade_str
 	else:  ## molecule
 		if item is MoleculeData:
 			item_id = item.molecule_name
@@ -256,9 +218,8 @@ func _create_item_entry(item, item_type: String) -> void:
 	entry.slider.value_changed.connect(_on_slider_changed.bind(item_id))
 	entry.container.add_child(entry.slider)
 	
-	## SpinBox (without per-item unit selector now)
-	entry.spinbox = SpinBox.new()
-	entry.spinbox.custom_minimum_size = Vector2(100, 0)
+	## ScientificSpinBox (replaces standard SpinBox)
+	entry.spinbox = ScientificSpinBox.new()
 	entry.spinbox.min_value = 0.0
 	entry.spinbox.max_value = _get_spinbox_max_for_unit(item_type, entry.current_unit)
 	entry.spinbox.step = 0.0001
@@ -266,8 +227,8 @@ func _create_item_entry(item, item_type: String) -> void:
 	entry.spinbox.allow_greater = true
 	entry.spinbox.allow_lesser = false
 	entry.spinbox.select_all_on_focus = true
-	entry.spinbox.add_theme_font_size_override("font_size", 11)
 	entry.spinbox.suffix = UNIT_NAMES[entry.current_unit]
+	entry.spinbox.add_theme_font_size_override("font_size", 11)
 	entry.spinbox.value_changed.connect(_on_spinbox_changed.bind(item_id))
 	entry.container.add_child(entry.spinbox)
 	
@@ -423,5 +384,35 @@ func _get_item_id(item, item_type: String) -> String:
 
 func _get_item_concentration(item) -> float:
 	return item.concentration
+
+#endregion
+
+#region External Updates
+
+func update_concentration(item_id: String, new_value_mm: float) -> void:
+	if not item_entries.has(item_id):
+		return
+	
+	var entry = item_entries[item_id]
+	entry.base_value_mm = new_value_mm
+	_update_entry_display(entry)
+
+func set_item_locked(item_id: String, locked: bool) -> void:
+	if not item_entries.has(item_id):
+		return
+	
+	var entry = item_entries[item_id]
+	entry.lock_button.button_pressed = locked
+	_update_lock_visual(entry)
+
+func get_concentration(item_id: String) -> float:
+	if item_entries.has(item_id):
+		return item_entries[item_id].base_value_mm
+	return 0.0
+
+func is_item_locked(item_id: String) -> bool:
+	if item_entries.has(item_id):
+		return item_entries[item_id].lock_button.button_pressed or category_locked
+	return false
 
 #endregion

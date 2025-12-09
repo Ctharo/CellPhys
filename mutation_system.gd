@@ -194,7 +194,7 @@ func _generate_enzyme_duplication(source: EnzymeData, existing_enzymes: Dictiona
 		return {}
 	
 	var source_rxn = source.reactions[0]
-	var new_rxn = ReactionData.new(new_id + "_rxn", source_rxn.enzyme_name + "_var")
+	var new_rxn = ReactionData.new(new_id + "_rxn", source_rxn.reaction_name + "_var")
 	
 	## Copy stoichiometry (maybe with substrate switching)
 	new_rxn.substrates = source_rxn.substrates.duplicate()
@@ -224,7 +224,7 @@ func _generate_enzyme_duplication(source: EnzymeData, existing_enzymes: Dictiona
 		"enzyme": new_enzyme,
 		"reaction": new_rxn,
 		"gene": new_gene,
-		"source_id": source.id,
+		"source_id": source.enzyme_id,
 		"mutation_type": "duplication"
 	}
 
