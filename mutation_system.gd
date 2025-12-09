@@ -38,17 +38,17 @@ var max_efficiency: float = 0.98            ## Maximum reaction efficiency
 class MutationResult:
 	var timestamp: float = 0.0
 	
-	## Enzyme modifications: {enz_id: {param: new_value}}
+	## EnzymeData modifications: {enz_id: {param: new_value}}
 	var enzyme_modifications: Dictionary = {}
 	
 	## New enzymes to add (with their reactions)
-	var new_enzymes: Array[Dictionary] = []  ## [{enzyme: Enzyme, reaction: Reaction, gene: Gene}]
+	var new_enzymes: Array[Dictionary] = []  ## [{enzyme: EnzymeData, reaction: ReactionData, gene: GeneData}]
 	
-	## Gene regulation modifications: {gene_id: {param: new_value}}
+	## GeneData regulation modifications: {gene_id: {param: new_value}}
 	var gene_modifications: Dictionary = {}
 	
 	## New molecules discovered through reactions
-	var new_molecules: Array[Molecule] = []
+	var new_molecules: Array[MoleculeData] = []
 	
 	## Statistics
 	var point_mutations: int = 0
@@ -118,7 +118,7 @@ func calculate_mutations(snapshot: Dictionary, delta: float, current_time: float
 			result.new_enzymes.append(novel)
 			result.novel_creations += 1
 	
-	## Gene regulation mutations
+	## GeneData regulation mutations
 	for gene_id in genes:
 		var gene: GeneData = genes[gene_id]
 		if _roll(gene_mutation_rate * delta):
@@ -138,7 +138,7 @@ func calculate_mutations(snapshot: Dictionary, delta: float, current_time: float
 
 #endregion
 
-#region Enzyme Point Mutations
+#region EnzymeData Point Mutations
 
 ## Generate small parameter changes to an existing enzyme
 func _generate_enzyme_point_mutation(enzyme: EnzymeData) -> Dictionary:
@@ -173,14 +173,14 @@ func _generate_enzyme_point_mutation(enzyme: EnzymeData) -> Dictionary:
 
 #endregion
 
-#region Enzyme Duplication
+#region EnzymeData Duplication
 
 ## Create a copy of an enzyme with variations
 func _generate_enzyme_duplication(source: EnzymeData, existing_enzymes: Dictionary, molecules: Dictionary) -> Dictionary:
 	## Create new enzyme
 	var new_id = _generate_unique_id("enz", existing_enzymes)
-	var new_name = source.name + "_v" + str(randi() % 100)
-	var new_enzyme = Enzyme.new(new_id, new_name)
+	var new_name = source.enzyme_name + "_v" + str(randi() % 100)
+	var new_enzyme = EnzymeData.new(new_id, new_name)
 	
 	## Copy and mutate properties
 	new_enzyme.concentration = source.concentration * randf_range(0.1, 0.5)  ## Start with less
@@ -194,7 +194,7 @@ func _generate_enzyme_duplication(source: EnzymeData, existing_enzymes: Dictiona
 		return {}
 	
 	var source_rxn = source.reactions[0]
-	var new_rxn = Reaction.new(new_id + "_rxn", source_rxn.name + "_var")
+	var new_rxn = ReactionData.new(new_id + "_rxn", source_rxn.reaction_name + "_var")
 	
 	## Copy stoichiometry (maybe with substrate switching)
 	new_rxn.substrates = source_rxn.substrates.duplicate()
@@ -214,8 +214,8 @@ func _generate_enzyme_duplication(source: EnzymeData, existing_enzymes: Dictiona
 	new_enzyme.add_reaction(new_rxn)
 	
 	## Create gene for new enzyme
-	var new_gene = Gene.new(
-		Gene.generate_name_for_enzyme(new_name),
+	var new_gene = GeneData.new(
+		GeneData.generate_name_for_enzyme(new_name),
 		new_id,
 		randf_range(0.00005, 0.0002)  ## Low basal rate initially
 	)
@@ -224,13 +224,13 @@ func _generate_enzyme_duplication(source: EnzymeData, existing_enzymes: Dictiona
 		"enzyme": new_enzyme,
 		"reaction": new_rxn,
 		"gene": new_gene,
-		"source_id": source.id,
+		"source_id": source.enzyme_id,
 		"mutation_type": "duplication"
 	}
 
 #endregion
 
-#region Novel Enzyme Creation
+#region Novel EnzymeData Creation
 
 ## Generate a completely new enzyme with a new reaction
 func _generate_novel_enzyme(existing_enzymes: Dictionary, molecules: Dictionary) -> Dictionary:
@@ -239,7 +239,7 @@ func _generate_novel_enzyme(existing_enzymes: Dictionary, molecules: Dictionary)
 	
 	var new_id = _generate_unique_id("enz", existing_enzymes)
 	var new_name = _generate_enzyme_name()
-	var new_enzyme = Enzyme.new(new_id, new_name)
+	var new_enzyme = EnzymeData.new(new_id, new_name)
 	
 	## Random properties
 	new_enzyme.concentration = randf_range(0.0001, 0.001)
@@ -249,7 +249,7 @@ func _generate_novel_enzyme(existing_enzymes: Dictionary, molecules: Dictionary)
 	new_enzyme._update_degradation_rate()
 	
 	## Create novel reaction
-	var new_rxn = Reaction.new(new_id + "_rxn", new_name + "_rxn")
+	var new_rxn = ReactionData.new(new_id + "_rxn", new_name + "_rxn")
 	
 	## Pick random substrate(s) and product(s)
 	var mol_names = molecules.keys()
@@ -276,8 +276,8 @@ func _generate_novel_enzyme(existing_enzymes: Dictionary, molecules: Dictionary)
 	new_enzyme.add_reaction(new_rxn)
 	
 	## Create gene
-	var new_gene = Gene.new(
-		Gene.generate_name_for_enzyme(new_name),
+	var new_gene = GeneData.new(
+		GeneData.generate_name_for_enzyme(new_name),
 		new_id,
 		randf_range(0.00001, 0.0001)  ## Very low basal rate
 	)
@@ -301,7 +301,7 @@ func _generate_novel_enzyme(existing_enzymes: Dictionary, molecules: Dictionary)
 
 #endregion
 
-#region Gene Mutations
+#region GeneData Mutations
 
 ## Generate mutations to gene regulatory elements
 func _generate_gene_mutation(gene: GeneData, molecules: Dictionary) -> Dictionary:
@@ -362,11 +362,11 @@ func _generate_gene_mutation(gene: GeneData, molecules: Dictionary) -> Dictionar
 
 #endregion
 
-#region New Molecule Generation
+#region New MoleculeData Generation
 
 ## Check if a reaction introduces molecules not yet in the system
-func _check_for_new_molecules(reaction: Reaction, existing: Dictionary) -> Array[Molecule]:
-	var new_mols: Array[Molecule] = []
+func _check_for_new_molecules(reaction: ReactionData, existing: Dictionary) -> Array[MoleculeData]:
+	var new_mols: Array[MoleculeData] = []
 	
 	## Check products
 	for product_name in reaction.products:
@@ -378,14 +378,14 @@ func _check_for_new_molecules(reaction: Reaction, existing: Dictionary) -> Array
 	return new_mols
 
 ## Generate a new molecule based on reaction context
-func _generate_derived_molecule(mol_name: String, reaction: Reaction, existing: Dictionary) -> Molecule:
-	var new_mol = Molecule.new(mol_name, 0.0)  ## Start at 0 concentration
+func _generate_derived_molecule(mol_name: String, reaction: ReactionData, existing: Dictionary) -> MoleculeData:
+	var new_mol = MoleculeData.new(mol_name, 0.0)  ## Start at 0 concentration
 	
 	## Try to derive structural code from substrate
 	if not reaction.substrates.is_empty():
 		var substrate_name = reaction.substrates.keys()[0]
 		if existing.has(substrate_name):
-			var substrate: Molecule = existing[substrate_name]
+			var substrate: MoleculeData = existing[substrate_name]
 			new_mol.structural_code = _mutate_structural_code(substrate.structural_code)
 			## Energy roughly conserved with some loss
 			new_mol.potential_energy = substrate.potential_energy * randf_range(0.7, 1.1)
@@ -437,7 +437,7 @@ func _generate_enzyme_name() -> String:
 	const ROOTS = ["synthase", "kinase", "lyase", "mutase", "reductase", "oxidase", "transferase"]
 	return PREFIXES[randi() % PREFIXES.size()] + ROOTS[randi() % ROOTS.size()]
 
-func _maybe_switch_molecule(reaction: Reaction, molecules: Dictionary) -> void:
+func _maybe_switch_molecule(reaction: ReactionData, molecules: Dictionary) -> void:
 	var mol_names = molecules.keys()
 	if mol_names.is_empty():
 		return

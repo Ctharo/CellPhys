@@ -25,7 +25,7 @@ corner_radius_bottom_left = 4
 custom_minimum_size = Vector2(200, 100)
 size_flags_horizontal = 3
 size_flags_vertical = 3
-mouse_filter = 0
+mouse_filter = 1
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 script = ExtResource("1_dock")
 
@@ -35,7 +35,7 @@ theme_override_constants/separation = 0
 
 [node name="Header" type="PanelContainer" parent="VBox"]
 layout_mode = 2
-mouse_filter = 0
+mouse_filter = 1
 theme_override_styles/panel = SubResource("StyleBoxFlat_header")
 
 [node name="HBox" type="HBoxContainer" parent="VBox/Header"]
@@ -46,7 +46,7 @@ theme_override_constants/separation = 6
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Drag to rearrange panel"
-mouse_filter = 0
+mouse_filter = 1
 theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
 theme_override_font_sizes/font_size = 14
 text = "⠿"

@@ -1,13 +1,11 @@
 ## Dockable panel wrapper with header, collapse, close, and drag-drop functionality
-## Panels can be dragged and dropped to rearrange within or between columns
+## Uses proper Godot 4.6+ drag-drop API for reliable panel rearrangement
 class_name DockPanel
 extends PanelContainer
 
 signal collapse_changed(panel_name: String, is_collapsed: bool)
 signal panel_visibility_changed(panel_name: String, is_visible: bool)
-signal drag_started(panel: DockPanel)
-signal drag_ended(panel: DockPanel)
-signal drop_requested(panel: DockPanel, target_container: Control, drop_position: int)
+signal panel_dropped(source: DockPanel, target_column: Control, at_index: int)
 
 @export var panel_title: String = "Panel"
 @export var panel_icon: String = "📊"
@@ -17,8 +15,6 @@ signal drop_requested(panel: DockPanel, target_container: Control, drop_position
 @export var can_drag: bool = true
 
 var is_collapsed: bool = false
-var is_dragging: bool = false
-var drag_preview: Control = null
 
 #region Node References
 
@@ -37,15 +33,11 @@ func _ready() -> void:
 	collapse_button.visible = can_collapse
 	close_button.visible = can_close
 	
-	## Setup drag handle if it exists
 	if drag_handle:
 		drag_handle.visible = can_drag
-		drag_handle.gui_input.connect(_on_drag_handle_gui_input)
 	
-	## Make the header draggable
-	var header = $VBox/Header
-	if header and can_drag:
-		header.gui_input.connect(_on_header_gui_input)
+	## Enable drop target behavior
+	mouse_filter = Control.MOUSE_FILTER_PASS
 
 func _update_title() -> void:
 	if title_label:
@@ -95,50 +87,28 @@ func _on_close_pressed() -> void:
 
 #endregion
 
-#region Drag and Drop
+#region Drag and Drop - Godot 4.6+ API
 
-func _on_header_gui_input(event: InputEvent) -> void:
-	if not can_drag:
-		return
-	
-	if event is InputEventMouseButton:
-		var mb = event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_LEFT:
-			if mb.pressed:
-				_start_drag()
-			else:
-				_end_drag()
-
-func _on_drag_handle_gui_input(event: InputEvent) -> void:
-	if not can_drag:
-		return
-	
-	if event is InputEventMouseButton:
-		var mb = event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_LEFT:
-			if mb.pressed:
-				_start_drag()
-			else:
-				_end_drag()
-
-func _start_drag() -> void:
-	is_dragging = true
-	modulate = Color(1.0, 1.0, 1.0, 0.7)
-	drag_started.emit(self)
-
-func _end_drag() -> void:
-	if is_dragging:
-		is_dragging = false
-		modulate = Color.WHITE
-		drag_ended.emit(self)
-
-func _get_drag_data(_at_position: Vector2) -> Variant:
+## Called when drag starts from the header
+func _get_drag_data(at_position: Vector2) -> Variant:
 	if not can_drag:
 		return null
 	
-	## Create visual preview
+	## Check if drag started from header area
+	var header = $VBox/Header
+	if not header:
+		return null
+	
+	var header_rect = header.get_rect()
+	if not header_rect.has_point(at_position):
+		return null
+	
+	## Create visual drag preview
 	var preview = _create_drag_preview()
 	set_drag_preview(preview)
+	
+	## Visual feedback on source
+	modulate = Color(1.0, 1.0, 1.0, 0.5)
 	
 	return {
 		"type": "dock_panel",
@@ -149,54 +119,60 @@ func _get_drag_data(_at_position: Vector2) -> Variant:
 func _create_drag_preview() -> Control:
 	var preview = PanelContainer.new()
 	
-	## Style the preview
 	var style = StyleBoxFlat.new()
-	style.bg_color = Color(0.2, 0.3, 0.5, 0.8)
-	style.corner_radius_top_left = 4
-	style.corner_radius_top_right = 4
-	style.corner_radius_bottom_left = 4
-	style.corner_radius_bottom_right = 4
+	style.bg_color = Color(0.2, 0.35, 0.55, 0.9)
+	style.corner_radius_top_left = 6
+	style.corner_radius_top_right = 6
+	style.corner_radius_bottom_left = 6
+	style.corner_radius_bottom_right = 6
 	style.border_width_left = 2
 	style.border_width_top = 2
 	style.border_width_right = 2
 	style.border_width_bottom = 2
-	style.border_color = Color(0.4, 0.6, 1.0)
+	style.border_color = Color(0.4, 0.65, 1.0)
+	style.content_margin_left = 12
+	style.content_margin_right = 12
+	style.content_margin_top = 8
+	style.content_margin_bottom = 8
 	preview.add_theme_stylebox_override("panel", style)
 	
-	## Add title label
 	var label = Label.new()
 	label.text = "%s %s" % [panel_icon, panel_title]
 	label.add_theme_font_size_override("font_size", 14)
 	preview.add_child(label)
 	
-	preview.custom_minimum_size = Vector2(150, 30)
+	preview.custom_minimum_size = Vector2(160, 36)
 	
 	return preview
 
+## Called to check if this panel can receive a drop
 func _can_drop_data(_at_position: Vector2, data: Variant) -> bool:
-	if data is Dictionary and data.get("type") == "dock_panel":
-		## Can't drop on itself
-		return data.get("panel") != self
-	return false
+	if not (data is Dictionary):
+		return false
+	if data.get("type") != "dock_panel":
+		return false
+	## Can't drop on itself
+	return data.get("panel") != self
 
+## Called when something is dropped on this panel
 func _drop_data(_at_position: Vector2, data: Variant) -> void:
-	if data is Dictionary and data.get("type") == "dock_panel":
-		var source_panel: DockPanel = data.get("panel")
-		if source_panel and source_panel != self:
-			## Request to swap or insert
-			var my_parent = get_parent()
-			if my_parent:
-				var my_index = my_parent.get_children().find(self)
-				drop_requested.emit(source_panel, my_parent, my_index)
+	if not (data is Dictionary) or data.get("type") != "dock_panel":
+		return
+	
+	var source_panel: DockPanel = data.get("panel")
+	if not source_panel or source_panel == self:
+		return
+	
+	## Get target position (insert before this panel)
+	var my_parent = get_parent()
+	if my_parent:
+		var my_index = get_index()
+		panel_dropped.emit(source_panel, my_parent, my_index)
 
-#endregion
-
-#region Input Handling
-
-func _input(event: InputEvent) -> void:
-	if is_dragging and event is InputEventMouseButton:
-		var mb = event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_LEFT and not mb.pressed:
-			_end_drag()
+func _notification(what: int) -> void:
+	match what:
+		NOTIFICATION_DRAG_END:
+			## Reset visual state when drag ends
+			modulate = Color.WHITE
 
 #endregion
