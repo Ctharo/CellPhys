@@ -9,6 +9,7 @@ extends Panel
 @export var grid_color: Color = Color(0.2, 0.2, 0.25)
 @export var axis_color: Color = Color(0.4, 0.4, 0.45)
 @export var margin: Vector2 = Vector2(50, 30)
+@export var no_data_color: Color = Color(0.5, 0.5, 0.55)
 
 #endregion
 
@@ -19,6 +20,7 @@ var series_data: Dictionary = {}  ## {name: Array[float]}
 var y_min: float = 0.0
 var y_max: float = 10.0
 var auto_scale: bool = true
+var _has_valid_data: bool = false
 
 ## Color palette for series
 var series_colors: Array[Color] = [
@@ -41,14 +43,18 @@ var color_assignments: Dictionary = {}  ## {series_name: color_index}
 #region Initialization
 
 func _ready() -> void:
-	pass
+	## Ensure we redraw when resized
+	resized.connect(_on_resized)
+
+func _on_resized() -> void:
+	queue_redraw()
 
 func _draw() -> void:
 	var rect = get_rect()
 	var chart_rect = Rect2(
 		margin.x, margin.y,
-		rect.size.x - margin.x * 2,
-		rect.size.y - margin.y * 2
+		maxf(rect.size.x - margin.x * 2, 10),
+		maxf(rect.size.y - margin.y * 2, 10)
 	)
 	
 	## Background
@@ -60,11 +66,12 @@ func _draw() -> void:
 	## Axes
 	_draw_axes(chart_rect)
 	
-	## Series
-	_draw_series(chart_rect)
-	
-	## Legend
-	_draw_legend(chart_rect)
+	## Series or "no data" message
+	if _has_valid_data:
+		_draw_series(chart_rect)
+		_draw_legend(chart_rect)
+	else:
+		_draw_no_data(chart_rect)
 
 #endregion
 
@@ -113,17 +120,25 @@ func _draw_axes(chart_rect: Rect2) -> void:
 	var font_size = 10
 	
 	for i in range(num_labels + 1):
-		var value = y_min + (y_max - y_min) * float(i) / num_labels
+		var label_value = y_min + (y_max - y_min) * float(i) / num_labels
 		var y = chart_rect.position.y + chart_rect.size.y * (1.0 - float(i) / num_labels)
-		var label = _format_value(value)
+		var label = _format_value(label_value)
 		draw_string(font, Vector2(5, y + 4), label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, axis_color)
 
+func _draw_no_data(chart_rect: Rect2) -> void:
+	var font = ThemeDB.fallback_font
+	var font_size = 14
+	var text = "Start simulation to see data"
+	var text_size = font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+	var pos = Vector2(
+		chart_rect.position.x + (chart_rect.size.x - text_size.x) / 2,
+		chart_rect.position.y + (chart_rect.size.y + text_size.y) / 2
+	)
+	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, no_data_color)
+
 func _draw_series(chart_rect: Rect2) -> void:
-	if time_data.is_empty():
-		return
-	
 	var y_range = y_max - y_min
-	if y_range <= 0:
+	if y_range <= 0.0:
 		y_range = 1.0
 	
 	for series_name in series_data:
@@ -134,8 +149,11 @@ func _draw_series(chart_rect: Rect2) -> void:
 		var color = _get_series_color(series_name)
 		var points: PackedVector2Array = []
 		
-		for i in range(data.size()):
-			var x = chart_rect.position.x + chart_rect.size.x * float(i) / (data.size() - 1)
+		var data_count = data.size()
+		var divisor = maxf(data_count - 1, 1)  ## Prevent division by zero
+		
+		for i in range(data_count):
+			var x = chart_rect.position.x + chart_rect.size.x * float(i) / divisor
 			var normalized_y = (data[i] - y_min) / y_range
 			var y = chart_rect.position.y + chart_rect.size.y * (1.0 - normalized_y)
 			y = clampf(y, chart_rect.position.y, chart_rect.position.y + chart_rect.size.y)
@@ -156,6 +174,9 @@ func _draw_legend(chart_rect: Rect2) -> void:
 	
 	var idx = 0
 	for series_name in series_data:
+		if series_data[series_name].size() < 2:
+			continue
+		
 		var color = _get_series_color(series_name)
 		var y = legend_y + idx * line_height
 		
@@ -169,7 +190,7 @@ func _draw_legend(chart_rect: Rect2) -> void:
 		draw_string(font, Vector2(legend_x + 16, y), display_name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.WHITE)
 		
 		idx += 1
-		if idx >= 10:  ## Max 10 in legend
+		if idx >= 10:
 			break
 
 func _get_series_color(series_name: String) -> Color:
@@ -177,15 +198,16 @@ func _get_series_color(series_name: String) -> Color:
 		color_assignments[series_name] = color_assignments.size() % series_colors.size()
 	return series_colors[color_assignments[series_name]]
 
-func _format_value(value: float) -> String:
-	if abs(value) < 0.001:
-		return "%.0f" % value
-	elif abs(value) < 1.0:
-		return "%.3f" % value
-	elif abs(value) < 100.0:
-		return "%.1f" % value
+func _format_value(val: float) -> String:
+	var abs_val = absf(val)
+	if abs_val < 0.001 and abs_val > 0.0:
+		return "%.1e" % val
+	elif abs_val < 1.0:
+		return "%.3f" % val
+	elif abs_val < 100.0:
+		return "%.1f" % val
 	else:
-		return "%.0f" % value
+		return "%.0f" % val
 
 #endregion
 
@@ -196,10 +218,25 @@ func update_chart(data: Dictionary, use_auto_scale: bool = true) -> void:
 	series_data = data.get("series", {})
 	auto_scale = use_auto_scale
 	
-	if auto_scale:
+	## Check if we have valid data to display
+	_has_valid_data = _check_valid_data()
+	
+	if auto_scale and _has_valid_data:
 		_calculate_auto_scale()
 	
 	queue_redraw()
+
+func _check_valid_data() -> bool:
+	## Need at least some time data
+	if time_data.size() < 2:
+		return false
+	
+	## Need at least one series with 2+ points
+	for series_name in series_data:
+		if series_data[series_name].size() >= 2:
+			return true
+	
+	return false
 
 func set_y_range(min_val: float, max_val: float) -> void:
 	y_min = min_val
@@ -211,23 +248,31 @@ func _calculate_auto_scale() -> void:
 	var all_values: Array[float] = []
 	
 	for series_name in series_data:
-		for val in series_data[series_name]:
-			all_values.append(val)
+		var data: Array = series_data[series_name]
+		for val in data:
+			if val is float or val is int:
+				all_values.append(float(val))
 	
 	if all_values.is_empty():
 		y_min = 0.0
 		y_max = 10.0
 		return
 	
-	var min_val = all_values.min()
-	var max_val = all_values.max()
+	var min_val: float = all_values[0]
+	var max_val: float = all_values[0]
+	
+	for val in all_values:
+		if val < min_val:
+			min_val = val
+		if val > max_val:
+			max_val = val
 	
 	## Add padding
 	var range_val = max_val - min_val
 	if range_val < 0.001:
-		range_val = max_val * 0.2 if max_val > 0 else 1.0
+		range_val = maxf(max_val * 0.2, 1.0)
 	
-	y_min = max(0.0, min_val - range_val * 0.1)
+	y_min = maxf(0.0, min_val - range_val * 0.1)
 	y_max = max_val + range_val * 0.1
 	
 	## Ensure minimum range
@@ -238,6 +283,7 @@ func clear() -> void:
 	time_data.clear()
 	series_data.clear()
 	color_assignments.clear()
+	_has_valid_data = false
 	queue_redraw()
 
 #endregion

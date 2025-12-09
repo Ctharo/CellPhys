@@ -1,5 +1,5 @@
-## Custom SpinBox with scientific notation support and dynamic width
-## Automatically formats large/small values in scientific notation for readability
+## Custom SpinBox with scientific notation support
+## Uses stable fixed width to prevent jarring resize during updates
 class_name ScientificSpinBox
 extends HBoxContainer
 
@@ -9,12 +9,8 @@ signal value_changed(new_value: float)
 
 ## Threshold for switching to scientific notation (number of digits before/after decimal)
 @export var scientific_threshold: int = 5
-## Minimum width for the input field
-@export var min_width: float = 70.0
-## Maximum width for the input field
-@export var max_width: float = 150.0
-## Width per character (approximate)
-@export var char_width: float = 8.0
+## Fixed width for the input field (stable, no dynamic resizing)
+@export var fixed_width: float = 85.0
 ## Number of significant figures in scientific notation
 @export var scientific_precision: int = 3
 ## Number of decimal places in standard notation
@@ -29,7 +25,7 @@ var value: float = 0.0:
 		if is_equal_approx(value, v):
 			return
 		value = v
-		if _line_edit:
+		if _line_edit and not _is_user_editing:
 			_update_display()
 	get:
 		return value
@@ -53,7 +49,6 @@ var suffix: String = "":
 		suffix = v
 		if _suffix_label:
 			_suffix_label.text = suffix
-			_update_display()
 
 var editable: bool = true:
 	set(v):
@@ -71,13 +66,14 @@ var select_all_on_focus: bool = true
 
 #endregion
 
-#region Internal Nodes
+#region Internal State
 
 var _line_edit: LineEdit
 var _suffix_label: Label
 var _increment_btn: Button
 var _decrement_btn: Button
 var _is_updating: bool = false
+var _is_user_editing: bool = false
 var _pending_font_size: int = -1
 
 #endregion
@@ -89,12 +85,10 @@ func _init() -> void:
 
 func _ready() -> void:
 	_create_ui()
-	## Apply current property values to newly created nodes
 	_suffix_label.text = suffix
 	_line_edit.editable = editable
 	_increment_btn.disabled = not editable
 	_decrement_btn.disabled = not editable
-	## Apply pending font size if set before ready
 	if _pending_font_size > 0:
 		_line_edit.add_theme_font_size_override("font_size", _pending_font_size)
 		_suffix_label.add_theme_font_size_override("font_size", _pending_font_size)
@@ -109,9 +103,9 @@ func _create_ui() -> void:
 	_decrement_btn.focus_mode = Control.FOCUS_NONE
 	add_child(_decrement_btn)
 	
-	## Line edit for value input
+	## Line edit - FIXED WIDTH for stability
 	_line_edit = LineEdit.new()
-	_line_edit.custom_minimum_size = Vector2(min_width, 0)
+	_line_edit.custom_minimum_size = Vector2(fixed_width, 0)
 	_line_edit.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_line_edit.alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_line_edit.text_submitted.connect(_on_text_submitted)
@@ -135,18 +129,26 @@ func _create_ui() -> void:
 	_increment_btn.focus_mode = Control.FOCUS_NONE
 	add_child(_increment_btn)
 
+## Apply font size override (handles calls before _ready)
+func add_theme_font_size_override(name: String, size: int) -> void:
+	if name == "font_size":
+		_pending_font_size = size
+		if _line_edit:
+			_line_edit.add_theme_font_size_override("font_size", size)
+		if _suffix_label:
+			_suffix_label.add_theme_font_size_override("font_size", size)
+
 #endregion
 
 #region Display Formatting
 
 func _update_display() -> void:
-	if _is_updating or not is_inside_tree():
+	if _is_updating or not is_inside_tree() or _is_user_editing:
 		return
 	_is_updating = true
 	
 	var display_text = _format_value(value)
 	_line_edit.text = display_text
-	_adjust_width(display_text)
 	
 	_is_updating = false
 
@@ -154,7 +156,6 @@ func _format_value(val: float) -> String:
 	if is_zero_approx(val):
 		return "0"
 	
-	## Determine if scientific notation is needed
 	var abs_val = absf(val)
 	var use_scientific = _should_use_scientific(abs_val)
 	
@@ -167,70 +168,45 @@ func _should_use_scientific(abs_val: float) -> bool:
 	if abs_val == 0.0:
 		return false
 	
-	## Use scientific for very large numbers
 	var upper_threshold = pow(10, scientific_threshold)
 	if abs_val >= upper_threshold:
 		return true
 	
-	## Use scientific for very small numbers
-	var lower_threshold = pow(10, -scientific_threshold)
-	if abs_val > 0 and abs_val < lower_threshold:
-		return true
-	
-	## Check if standard representation would be too long
-	var standard = _format_standard(abs_val)
-	if standard.length() > scientific_threshold + 3:
+	var lower_threshold = pow(10, -scientific_threshold + 1)
+	if abs_val < lower_threshold:
 		return true
 	
 	return false
 
 func _format_scientific(val: float) -> String:
-	if is_zero_approx(val):
+	if val == 0.0:
 		return "0"
 	
-	var sign_str = "-" if val < 0 else ""
-	var abs_val = absf(val)
+	var exponent = floori(log(absf(val)) / log(10.0))
+	var mantissa = val / pow(10.0, exponent)
 	
-	## Calculate exponent
-	var exponent = floori(log(abs_val) / log(10.0))
-	var mantissa = abs_val / pow(10.0, exponent)
-	
-	## Round mantissa to desired precision
-	var multiplier = pow(10.0, scientific_precision - 1)
-	mantissa = roundf(mantissa * multiplier) / multiplier
-	
-	## Handle rounding that pushes mantissa to 10
-	if mantissa >= 10.0:
+	if absf(mantissa) >= 10.0:
 		mantissa /= 10.0
 		exponent += 1
+	elif absf(mantissa) < 1.0 and mantissa != 0.0:
+		mantissa *= 10.0
+		exponent -= 1
 	
-	## Format mantissa (remove trailing zeros)
-	var mantissa_str = _strip_trailing_zeros(str(snapped(mantissa, pow(10.0, -(scientific_precision - 1)))))
+	var format_str = "%." + str(scientific_precision - 1) + "f"
+	var mantissa_str = _strip_trailing_zeros(format_str % mantissa)
 	
-	return "%s%se%d" % [sign_str, mantissa_str, exponent]
+	return "%se%d" % [mantissa_str, exponent]
 
 func _format_standard(val: float) -> String:
-	if is_zero_approx(val):
-		return "0"
-	
-	## Determine appropriate decimal places based on value magnitude
-	var abs_val = absf(val)
 	var decimals = standard_precision
+	var abs_val = absf(val)
 	
-	if abs_val >= 1000:
+	if abs_val >= 100.0:
 		decimals = 1
-	elif abs_val >= 100:
+	elif abs_val >= 10.0:
 		decimals = 2
-	elif abs_val >= 10:
+	elif abs_val >= 1.0:
 		decimals = 3
-	elif abs_val >= 1:
-		decimals = 4
-	elif abs_val >= 0.1:
-		decimals = 5
-	elif abs_val >= 0.01:
-		decimals = 6
-	else:
-		decimals = 7
 	
 	var format_str = "%." + str(decimals) + "f"
 	var result = format_str % val
@@ -240,20 +216,13 @@ func _strip_trailing_zeros(s: String) -> String:
 	if not s.contains("."):
 		return s
 	
-	## Remove trailing zeros after decimal point
 	while s.ends_with("0") and not s.ends_with(".0"):
 		s = s.substr(0, s.length() - 1)
 	
-	## Remove decimal point if no decimals remain
 	if s.ends_with("."):
 		s = s.substr(0, s.length() - 1)
 	
 	return s
-
-func _adjust_width(text: String) -> void:
-	var total_chars = text.length() + suffix.length() + 1
-	var desired_width = clampf(total_chars * char_width, min_width, max_width)
-	_line_edit.custom_minimum_size.x = desired_width
 
 #endregion
 
@@ -265,7 +234,6 @@ func _parse_input(text: String) -> float:
 	if text.is_empty():
 		return value
 	
-	## Handle scientific notation input (various formats)
 	var scientific_patterns = ["e", "×10^", "x10^", "*10^"]
 	
 	for pattern in scientific_patterns:
@@ -276,11 +244,10 @@ func _parse_input(text: String) -> float:
 				var exponent = _safe_float(parts[1])
 				return mantissa * pow(10.0, exponent)
 	
-	## Handle superscript notation (e.g., "1.5×10³")
 	var superscript_map = {
 		"⁰": 0, "¹": 1, "²": 2, "³": 3, "⁴": 4,
 		"⁵": 5, "⁶": 6, "⁷": 7, "⁸": 8, "⁹": 9,
-		"⁻": -1  ## Negative marker
+		"⁻": -1
 	}
 	
 	for marker in ["×10", "x10", "*10"]:
@@ -293,7 +260,6 @@ func _parse_input(text: String) -> float:
 			var exponent = _parse_superscript_exponent(exp_str, superscript_map)
 			return mantissa * pow(10.0, exponent)
 	
-	## Standard numeric input
 	return _safe_float(text)
 
 func _parse_superscript_exponent(exp_str: String, superscript_map: Dictionary) -> float:
@@ -323,15 +289,17 @@ func _safe_float(s: String) -> float:
 #region Callbacks
 
 func _on_text_submitted(new_text: String) -> void:
+	_is_user_editing = false
 	var parsed = _parse_input(new_text)
 	_apply_value(parsed)
 
 func _on_focus_entered() -> void:
+	_is_user_editing = true
 	if select_all_on_focus:
-		## Defer to ensure text is ready
 		_line_edit.call_deferred("select_all")
 
 func _on_focus_exited() -> void:
+	_is_user_editing = false
 	var parsed = _parse_input(_line_edit.text)
 	_apply_value(parsed)
 
@@ -345,39 +313,50 @@ func _on_decrement() -> void:
 
 func _on_line_edit_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
-			_on_increment()
-			get_viewport().set_input_as_handled()
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
-			_on_decrement()
-			get_viewport().set_input_as_handled()
+		var mb = event as InputEventMouseButton
+		if mb.pressed:
+			if mb.button_index == MOUSE_BUTTON_WHEEL_UP:
+				_on_increment()
+				get_viewport().set_input_as_handled()
+			elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				_on_decrement()
+				get_viewport().set_input_as_handled()
 
 func _apply_value(new_val: float) -> void:
-	## Clamp to bounds
-	if not allow_greater:
-		new_val = minf(new_val, max_value)
-	if not allow_lesser:
-		new_val = maxf(new_val, min_value)
+	if not allow_lesser and new_val < min_value:
+		new_val = min_value
+	elif new_val < min_value:
+		new_val = min_value
 	
-	new_val = clampf(new_val, min_value if not allow_lesser else -INF, max_value if not allow_greater else INF)
+	if not allow_greater and new_val > max_value:
+		new_val = max_value
+	
+	new_val = maxf(0.0, new_val)
 	
 	if not is_equal_approx(value, new_val):
 		value = new_val
+		_update_display()
 		value_changed.emit(value)
 	else:
 		_update_display()
 
 func _get_dynamic_step() -> float:
-	## Adjust step based on current value magnitude for intuitive incrementing
-	if is_zero_approx(value):
+	if value <= 0.0:
 		return step
 	
 	var magnitude = floori(log(absf(value)) / log(10.0))
-	return maxf(step, pow(10.0, magnitude - 2))
+	return pow(10.0, magnitude - 1)
 
 #endregion
 
-#region Theme
+#region Public API
 
+## Set value without emitting signal (for external updates)
+func set_value_no_signal(new_val: float) -> void:
+	if is_equal_approx(value, new_val):
+		return
+	value = new_val
+	if _line_edit and not _is_user_editing:
+		_update_display()
 
 #endregion
