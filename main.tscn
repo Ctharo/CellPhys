@@ -1,17 +1,17 @@
-[gd_scene load_steps=5 format=3 uid="uid://main_scene"]
+[gd_scene load_steps=5 format=3 uid="uid://btkixb7lvrqy1"]
 
-[ext_resource type="Script" path="res://main.gd" id="1_main"]
-[ext_resource type="Script" path="res://draggable_column.gd" id="2_column"]
+[ext_resource type="Script" uid="uid://buw4t1x75eok5" path="res://main.gd" id="1_main"]
+[ext_resource type="Script" uid="uid://drumfvbrjow76" path="res://draggable_column.gd" id="2_column"]
 [ext_resource type="PackedScene" uid="uid://b5xmrwvkp2qhe" path="res://dock_panel.tscn" id="3_dock"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_toolbar"]
-bg_color = Color(0.15, 0.15, 0.18, 1)
 content_margin_left = 8.0
 content_margin_top = 4.0
 content_margin_right = 8.0
 content_margin_bottom = 4.0
+bg_color = Color(0.15, 0.15, 0.18, 1)
 
-[node name="Main" type="Control"]
+[node name="Main" type="Control" unique_id=1187778721]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -20,7 +20,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_main")
 
-[node name="VBox" type="VBoxContainer" parent="."]
+[node name="VBox" type="VBoxContainer" parent="." unique_id=85382591]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -29,33 +29,33 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 0
 
-[node name="Toolbar" type="PanelContainer" parent="VBox"]
+[node name="Toolbar" type="PanelContainer" parent="VBox" unique_id=1498348756]
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_toolbar")
 
-[node name="HBox" type="HBoxContainer" parent="VBox/Toolbar"]
+[node name="HBox" type="HBoxContainer" parent="VBox/Toolbar" unique_id=730070513]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="PauseButton" type="Button" parent="VBox/Toolbar/HBox"]
+[node name="PauseButton" type="Button" parent="VBox/Toolbar/HBox" unique_id=1246016964]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
 text = "▶ Start"
 
-[node name="ResetButton" type="Button" parent="VBox/Toolbar/HBox"]
+[node name="ResetButton" type="Button" parent="VBox/Toolbar/HBox" unique_id=757108157]
 unique_name_in_owner = true
 layout_mode = 2
 text = "⟲ Reset"
 
-[node name="Sep1" type="VSeparator" parent="VBox/Toolbar/HBox"]
+[node name="Sep1" type="VSeparator" parent="VBox/Toolbar/HBox" unique_id=967999913]
 layout_mode = 2
 
-[node name="PathwayLabel" type="Label" parent="VBox/Toolbar/HBox"]
+[node name="PathwayLabel" type="Label" parent="VBox/Toolbar/HBox" unique_id=262484431]
 layout_mode = 2
 text = "Pathway:"
 
-[node name="PathwayOption" type="OptionButton" parent="VBox/Toolbar/HBox"]
+[node name="PathwayOption" type="OptionButton" parent="VBox/Toolbar/HBox" unique_id=1011781082]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
@@ -70,14 +70,14 @@ popup/item_2/id = 2
 popup/item_3/text = "Oscillator"
 popup/item_3/id = 3
 
-[node name="Sep2" type="VSeparator" parent="VBox/Toolbar/HBox"]
+[node name="Sep2" type="VSeparator" parent="VBox/Toolbar/HBox" unique_id=1906725]
 layout_mode = 2
 
-[node name="SpeedLabel" type="Label" parent="VBox/Toolbar/HBox"]
+[node name="SpeedLabel" type="Label" parent="VBox/Toolbar/HBox" unique_id=1598445544]
 layout_mode = 2
 text = "Speed:"
 
-[node name="SpeedSlider" type="HSlider" parent="VBox/Toolbar/HBox"]
+[node name="SpeedSlider" type="HSlider" parent="VBox/Toolbar/HBox" unique_id=493864802]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
@@ -86,20 +86,20 @@ max_value = 10.0
 step = 0.1
 value = 1.0
 
-[node name="SpeedValue" type="Label" parent="VBox/Toolbar/HBox"]
+[node name="SpeedValue" type="Label" parent="VBox/Toolbar/HBox" unique_id=1962200265]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(40, 0)
 layout_mode = 2
 text = "1.0x"
 
-[node name="Sep3" type="VSeparator" parent="VBox/Toolbar/HBox"]
+[node name="Sep3" type="VSeparator" parent="VBox/Toolbar/HBox" unique_id=1841342737]
 layout_mode = 2
 
-[node name="LayoutLabel" type="Label" parent="VBox/Toolbar/HBox"]
+[node name="LayoutLabel" type="Label" parent="VBox/Toolbar/HBox" unique_id=1567388657]
 layout_mode = 2
 text = "Layout:"
 
-[node name="LayoutOption" type="OptionButton" parent="VBox/Toolbar/HBox"]
+[node name="LayoutOption" type="OptionButton" parent="VBox/Toolbar/HBox" unique_id=249754441]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
@@ -112,22 +112,22 @@ popup/item_1/id = 1
 popup/item_2/text = "Compact"
 popup/item_2/id = 2
 
-[node name="ViewMenu" type="MenuButton" parent="VBox/Toolbar/HBox"]
+[node name="ViewMenu" type="MenuButton" parent="VBox/Toolbar/HBox" unique_id=1317531079]
 unique_name_in_owner = true
 layout_mode = 2
 text = "View"
 
-[node name="Spacer" type="Control" parent="VBox/Toolbar/HBox"]
+[node name="Spacer" type="Control" parent="VBox/Toolbar/HBox" unique_id=651789013]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="AutoScaleCheck" type="CheckBox" parent="VBox/Toolbar/HBox"]
+[node name="AutoScaleCheck" type="CheckBox" parent="VBox/Toolbar/HBox" unique_id=1189781994]
 unique_name_in_owner = true
 layout_mode = 2
 button_pressed = true
 text = "Auto Scale"
 
-[node name="ChartModeOption" type="OptionButton" parent="VBox/Toolbar/HBox"]
+[node name="ChartModeOption" type="OptionButton" parent="VBox/Toolbar/HBox" unique_id=1114978707]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
@@ -140,19 +140,19 @@ popup/item_1/id = 1
 popup/item_2/text = "Both"
 popup/item_2/id = 2
 
-[node name="TestControlsBar" type="PanelContainer" parent="VBox"]
+[node name="TestControlsBar" type="PanelContainer" parent="VBox" unique_id=1540505283]
 layout_mode = 2
 
-[node name="HBox" type="HBoxContainer" parent="VBox/TestControlsBar"]
+[node name="HBox" type="HBoxContainer" parent="VBox/TestControlsBar" unique_id=1139528728]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="QuickLabel" type="Label" parent="VBox/TestControlsBar/HBox"]
+[node name="QuickLabel" type="Label" parent="VBox/TestControlsBar/HBox" unique_id=363080547]
 layout_mode = 2
 theme_override_font_sizes/font_size = 11
 text = "Quick:"
 
-[node name="IsolateOption" type="OptionButton" parent="VBox/TestControlsBar/HBox"]
+[node name="IsolateOption" type="OptionButton" parent="VBox/TestControlsBar/HBox" unique_id=1998104633]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
@@ -174,105 +174,101 @@ popup/item_5/id = 5
 popup/item_6/text = "Lock All"
 popup/item_6/id = 6
 
-[node name="Sep" type="VSeparator" parent="VBox/TestControlsBar/HBox"]
+[node name="Sep" type="VSeparator" parent="VBox/TestControlsBar/HBox" unique_id=1650497640]
 layout_mode = 2
 
-[node name="LocksLabel" type="Label" parent="VBox/TestControlsBar/HBox"]
+[node name="LocksLabel" type="Label" parent="VBox/TestControlsBar/HBox" unique_id=1691258927]
 layout_mode = 2
 theme_override_font_sizes/font_size = 11
 text = "Lock:"
 
-[node name="LockMoleculesBtn" type="CheckButton" parent="VBox/TestControlsBar/HBox"]
+[node name="LockMoleculesBtn" type="CheckButton" parent="VBox/TestControlsBar/HBox" unique_id=118012444]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Lock molecule concentrations (persists across sessions)"
 text = "Molecules"
 
-[node name="LockEnzymesBtn" type="CheckButton" parent="VBox/TestControlsBar/HBox"]
+[node name="LockEnzymesBtn" type="CheckButton" parent="VBox/TestControlsBar/HBox" unique_id=451180108]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Lock enzyme concentrations (persists across sessions)"
 text = "Enzymes"
 
-[node name="LockGenesBtn" type="CheckButton" parent="VBox/TestControlsBar/HBox"]
+[node name="LockGenesBtn" type="CheckButton" parent="VBox/TestControlsBar/HBox" unique_id=376537428]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Lock gene expression (persists across sessions)"
 text = "Genes"
 
-[node name="LockReactionsBtn" type="CheckButton" parent="VBox/TestControlsBar/HBox"]
+[node name="LockReactionsBtn" type="CheckButton" parent="VBox/TestControlsBar/HBox" unique_id=400064347]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Lock reactions (persists across sessions)"
 text = "Reactions"
 
-[node name="HSplit" type="HSplitContainer" parent="VBox"]
+[node name="HSplit" type="HSplitContainer" parent="VBox" unique_id=811551979]
 layout_mode = 2
 size_flags_vertical = 3
+split_offsets = PackedInt32Array(220)
 split_offset = 220
 
-[node name="LeftColumn" type="VSplitContainer" parent="VBox/HSplit"]
+[node name="LeftColumn" type="VSplitContainer" parent="VBox/HSplit" unique_id=2084975677]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 script = ExtResource("2_column")
 
-[node name="CellPanel" parent="VBox/HSplit/LeftColumn" instance=ExtResource("3_dock")]
+[node name="CellPanel" parent="VBox/HSplit/LeftColumn" unique_id=1968952220 instance=ExtResource("3_dock")]
 unique_name_in_owner = true
 layout_mode = 2
 panel_title = "Cell Status"
 panel_icon = "🔬"
 panel_name = "cell"
-can_close = true
 
-[node name="HSplit2" type="HSplitContainer" parent="VBox/HSplit"]
+[node name="HSplit2" type="HSplitContainer" parent="VBox/HSplit" unique_id=1511244048]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 2.0
 
-[node name="MiddleColumn" type="VSplitContainer" parent="VBox/HSplit/HSplit2"]
+[node name="MiddleColumn" type="VSplitContainer" parent="VBox/HSplit/HSplit2" unique_id=1369478595]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(240, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 script = ExtResource("2_column")
 
-[node name="EnzymeReactionPanel" parent="VBox/HSplit/HSplit2/MiddleColumn" instance=ExtResource("3_dock")]
+[node name="EnzymeReactionPanel" parent="VBox/HSplit/HSplit2/MiddleColumn" unique_id=207071869 instance=ExtResource("3_dock")]
 unique_name_in_owner = true
 layout_mode = 2
 panel_title = "Enzymes & Reactions"
 panel_icon = "⚗️"
 panel_name = "enzyme_reaction"
-can_close = true
 
-[node name="MoleculesPanel" parent="VBox/HSplit/HSplit2/MiddleColumn" instance=ExtResource("3_dock")]
+[node name="MoleculesPanel" parent="VBox/HSplit/HSplit2/MiddleColumn" unique_id=1803939013 instance=ExtResource("3_dock")]
 unique_name_in_owner = true
 layout_mode = 2
 panel_title = "Molecules"
 panel_icon = "🧬"
 panel_name = "molecules"
-can_close = true
 
-[node name="RightColumn" type="VSplitContainer" parent="VBox/HSplit/HSplit2"]
+[node name="RightColumn" type="VSplitContainer" parent="VBox/HSplit/HSplit2" unique_id=223777583]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(240, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 script = ExtResource("2_column")
 
-[node name="GenesPanel" parent="VBox/HSplit/HSplit2/RightColumn" instance=ExtResource("3_dock")]
+[node name="GenesPanel" parent="VBox/HSplit/HSplit2/RightColumn" unique_id=550671471 instance=ExtResource("3_dock")]
 unique_name_in_owner = true
 layout_mode = 2
 panel_title = "Gene Expression"
 panel_icon = "🧪"
 panel_name = "genes"
-can_close = true
 
-[node name="ChartDock" parent="VBox/HSplit/HSplit2/RightColumn" instance=ExtResource("3_dock")]
+[node name="ChartDock" parent="VBox/HSplit/HSplit2/RightColumn" unique_id=1372296097 instance=ExtResource("3_dock")]
 unique_name_in_owner = true
 layout_mode = 2
 panel_title = "Chart"
 panel_icon = "📈"
 panel_name = "chart"
-can_close = true
