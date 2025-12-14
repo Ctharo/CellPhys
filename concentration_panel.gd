@@ -28,7 +28,7 @@ var panel_name: String = ""  ## For panel-specific settings
 class ItemEntry:
 	var container: HBoxContainer
 	var name_label: Label
-	var spinbox: ScientificSpinBox
+	var spinbox: SpinBox
 	var slider: HSlider
 	var lock_button: CheckBox
 	var info_label: Label
@@ -38,6 +38,29 @@ class ItemEntry:
 	var base_value_mm: float = 0.0
 	var item_type: String = "molecule"
 	var is_updating: bool = false
+
+#endregion
+
+#region Label Settings Cache
+
+var _label_settings_title: LabelSettings
+var _label_settings_normal: LabelSettings
+var _label_settings_small: LabelSettings
+var _label_settings_info: LabelSettings
+
+func _create_label_settings() -> void:
+	_label_settings_title = LabelSettings.new()
+	_label_settings_title.font_size = 13
+	
+	_label_settings_normal = LabelSettings.new()
+	_label_settings_normal.font_size = 12
+	
+	_label_settings_small = LabelSettings.new()
+	_label_settings_small.font_size = 11
+	
+	_label_settings_info = LabelSettings.new()
+	_label_settings_info.font_size = 10
+	_label_settings_info.font_color = Color(0.4, 0.4, 0.4)
 
 #endregion
 
@@ -54,6 +77,7 @@ var title_label: Label
 
 func _init() -> void:
 	add_theme_constant_override("separation", 6)
+	_create_label_settings()
 
 func _ready() -> void:
 	_create_header()
@@ -66,19 +90,18 @@ func _create_header() -> void:
 	## Title
 	title_label = Label.new()
 	title_label.text = panel_title
-	title_label.add_theme_font_size_override("font_size", 13)
+	title_label.label_settings = _label_settings_title
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header_container.add_child(title_label)
 	
 	## Global unit selector
 	var unit_label = Label.new()
 	unit_label.text = "Unit:"
-	unit_label.add_theme_font_size_override("font_size", 11)
+	unit_label.label_settings = _label_settings_small
 	header_container.add_child(unit_label)
 	
 	global_unit_option = OptionButton.new()
 	global_unit_option.custom_minimum_size = Vector2(60, 0)
-	global_unit_option.add_theme_font_size_override("font_size", 11)
 	for i in range(UNIT_NAMES.size()):
 		global_unit_option.add_item(UNIT_NAMES[i], i)
 	global_unit_option.item_selected.connect(_on_global_unit_changed)
@@ -87,7 +110,6 @@ func _create_header() -> void:
 	## Category lock
 	category_lock_button = CheckBox.new()
 	category_lock_button.text = "🔒 All"
-	category_lock_button.add_theme_font_size_override("font_size", 11)
 	category_lock_button.tooltip_text = "Lock all %ss from simulation changes" % default_item_type
 	category_lock_button.toggled.connect(_on_category_lock_toggled)
 	header_container.add_child(category_lock_button)
@@ -121,6 +143,33 @@ func set_panel_info(title: String, item_type: String, name: String = "") -> void
 		title_label.text = title
 	if category_lock_button:
 		category_lock_button.tooltip_text = "Lock all %ss from simulation changes" % item_type
+
+## Setup multiple items at once
+func setup_items(items: Array, item_type: String = "") -> void:
+	clear()
+	if item_type != "":
+		default_item_type = item_type
+	
+	for item in items:
+		add_item(item, default_item_type)
+
+## Add a single item to the panel
+func add_item(item, item_type: String = "") -> void:
+	if item_type == "":
+		item_type = default_item_type
+	
+	var item_id = _get_item_id(item, item_type)
+	
+	## Skip if already exists
+	if item_entries.has(item_id):
+		return
+	
+	var item_name = _get_item_name(item, item_type)
+	var item_conc = _get_item_concentration(item)
+	var is_locked = _get_item_locked(item, item_type)
+	var extra_info = _get_item_info(item, item_type)
+	
+	_create_item_entry(item_id, item_name, item_conc, is_locked, extra_info, item_type)
 
 func update_values(items: Array, item_type: String = "") -> void:
 	if item_type != "":
@@ -196,7 +245,7 @@ func _create_item_entry(item_id: String, item_name: String, item_conc: float,
 	entry.name_label = Label.new()
 	entry.name_label.text = item_name
 	entry.name_label.custom_minimum_size = Vector2(settings.get_element_min_width("name"), 0)
-	entry.name_label.add_theme_font_size_override("font_size", 12)
+	entry.name_label.label_settings = _label_settings_normal
 	entry.name_label.clip_text = true
 	entry.name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	entry.name_label.size_flags_stretch_ratio = settings.get_element_ratio("name", panel_name)
@@ -214,8 +263,8 @@ func _create_item_entry(item_id: String, item_name: String, item_conc: float,
 	entry.slider.value_changed.connect(_on_slider_changed.bind(item_id))
 	entry.container.add_child(entry.slider)
 	
-	## ScientificSpinBox - proportional stretch
-	entry.spinbox = ScientificSpinBox.new()
+	## SpinBox - proportional stretch
+	entry.spinbox = SpinBox.new()
 	entry.spinbox.custom_minimum_size = Vector2(settings.get_element_min_width("spinbox"), 0)
 	entry.spinbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	entry.spinbox.size_flags_stretch_ratio = settings.get_element_ratio("spinbox", panel_name)
@@ -226,8 +275,7 @@ func _create_item_entry(item_id: String, item_name: String, item_conc: float,
 	entry.spinbox.allow_greater = true
 	entry.spinbox.allow_lesser = false
 	entry.spinbox.select_all_on_focus = true
-	entry.spinbox.suffix = UNIT_NAMES[entry.current_unit]
-	entry.spinbox.add_theme_font_size_override("font_size", 11)
+	entry.spinbox.suffix = " " + UNIT_NAMES[entry.current_unit]
 	entry.spinbox.value_changed.connect(_on_spinbox_changed.bind(item_id))
 	entry.container.add_child(entry.spinbox)
 	
@@ -237,8 +285,7 @@ func _create_item_entry(item_id: String, item_name: String, item_conc: float,
 	entry.info_label.custom_minimum_size = Vector2(settings.get_element_min_width("info"), 0)
 	entry.info_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	entry.info_label.size_flags_stretch_ratio = settings.get_element_ratio("info", panel_name)
-	entry.info_label.add_theme_font_size_override("font_size", 10)
-	entry.info_label.add_theme_color_override("font_color", Color(0.4, 0.4, 0.4))
+	entry.info_label.label_settings = _label_settings_info
 	entry.info_label.clip_text = true
 	entry.container.add_child(entry.info_label)
 	
@@ -257,7 +304,6 @@ func _update_entry_display(entry: ItemEntry) -> void:
 	entry.is_updating = true
 	
 	var display_value = entry.base_value_mm * UNIT_MULTIPLIERS[entry.current_unit]
-	## Use value property directly - is_updating flag prevents callback loops
 	entry.slider.value = display_value
 	entry.spinbox.set_value_no_signal(display_value)
 	
@@ -272,7 +318,7 @@ func _update_all_units() -> void:
 		
 		## Update spinbox range and suffix
 		entry.spinbox.max_value = _get_spinbox_max_for_unit(entry.item_type, entry.current_unit)
-		entry.spinbox.suffix = UNIT_NAMES[entry.current_unit]
+		entry.spinbox.suffix = " " + UNIT_NAMES[entry.current_unit]
 		
 		## Update displayed values
 		_update_entry_display(entry)
@@ -345,7 +391,7 @@ func _on_slider_changed(value: float, item_id: String) -> void:
 	
 	entry.is_updating = true
 	entry.base_value_mm = value / UNIT_MULTIPLIERS[entry.current_unit]
-	entry.spinbox.value = value  ## Direct assignment, is_updating prevents loops
+	entry.spinbox.value = value
 	entry.is_updating = false
 	
 	concentration_changed.emit(item_id, entry.base_value_mm)
@@ -360,7 +406,7 @@ func _on_spinbox_changed(value: float, item_id: String) -> void:
 	
 	entry.is_updating = true
 	entry.base_value_mm = value / UNIT_MULTIPLIERS[entry.current_unit]
-	entry.slider.value = value  ## Direct assignment, is_updating prevents loops
+	entry.slider.value = value
 	entry.is_updating = false
 	
 	concentration_changed.emit(item_id, entry.base_value_mm)

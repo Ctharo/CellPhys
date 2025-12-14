@@ -45,8 +45,8 @@ static func generate_name_for_enzyme(p_enzyme_name: String) -> String:
 ## Create a runtime instance from this resource template
 func create_instance() -> GeneData:
 	var instance = duplicate(false) as GeneData  ## Shallow duplicate
-	instance.activators = []
-	instance.repressors = []
+	instance.activators = [] as Array[RegulatoryElementData]
+	instance.repressors = [] as Array[RegulatoryElementData]
 	for act in activators:
 		instance.activators.append(act.create_instance())
 	for rep in repressors:

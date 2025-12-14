@@ -23,6 +23,10 @@ var selection_rate: float = 0.1           ## How often selection occurs (per sec
 var elimination_rate: float = 0.02        ## Chance to eliminate low-fitness enzyme
 var boost_rate: float = 0.05              ## Chance to boost high-fitness enzyme
 
+## Selection timing (referenced by SimulationConfig)
+var selection_interval: float = 10.0      ## Seconds between selection events
+var fitness_boost_factor: float = 1.2     ## Expression multiplier for high-fitness enzymes
+
 ## Population limits
 var min_enzymes: int = 3                  ## Don't eliminate below this count
 var max_enzymes: int = 20                 ## Encourage elimination above this
@@ -96,12 +100,12 @@ func calculate_selection(snapshot: Dictionary, delta: float, current_time: float
 	var enzymes: Dictionary = snapshot.enzymes
 	var molecules: Dictionary = snapshot.molecules
 	var genes: Dictionary = snapshot.genes
-	var reactions: Array = snapshot.reactions
+	var _reactions: Array = snapshot.reactions
 	
 	## Step 1: Calculate fitness for all enzymes
 	var fitness_scores: Dictionary = {}
 	for enz_id in enzymes:
-		var enzyme: Enzyme = enzymes[enz_id]
+		var enzyme = enzymes[enz_id]
 		var breakdown = _calculate_enzyme_fitness(enzyme, molecules, genes)
 		fitness_scores[enz_id] = breakdown.total
 		result.fitness_report[enz_id] = breakdown
@@ -128,8 +132,8 @@ func calculate_selection(snapshot: Dictionary, delta: float, current_time: float
 	
 	for enz_id in elite_enzymes:
 		if _roll(boost_rate):
-			var boost_factor = 1.5 + (fitness_scores[enz_id] - boost_threshold) * 2.0
-			result.boosts[enz_id] = clampf(boost_factor, 1.2, 3.0)
+			var boost_factor_calc = fitness_boost_factor + (fitness_scores[enz_id] - boost_threshold) * 2.0
+			result.boosts[enz_id] = clampf(boost_factor_calc, 1.2, 3.0)
 			result.boosts_count += 1
 	
 	## Step 5: Resolve competition between similar enzymes
@@ -155,7 +159,7 @@ func calculate_selection(snapshot: Dictionary, delta: float, current_time: float
 #region Fitness Calculation
 
 ## Calculate comprehensive fitness score for an enzyme
-func _calculate_enzyme_fitness(enzyme: Enzyme, molecules: Dictionary, genes: Dictionary) -> Dictionary:
+func _calculate_enzyme_fitness(enzyme, molecules: Dictionary, genes: Dictionary) -> Dictionary:
 	var breakdown = {
 		"total": 0.0,
 		"efficiency": 0.0,
@@ -206,8 +210,9 @@ func _calculate_enzyme_fitness(enzyme: Enzyme, molecules: Dictionary, genes: Dic
 	
 	## 5. Regulation score (is the enzyme well-regulated?)
 	var reg_score = 0.5  ## Neutral for unregulated
-	if genes.has(enzyme.id):
-		var gene: Gene = genes[enzyme.id]
+	var enz_id = enzyme.enzyme_id if "enzyme_id" in enzyme else enzyme.id
+	if genes.has(enz_id):
+		var gene = genes[enz_id]
 		reg_score = _calculate_regulation_fitness(gene, molecules)
 	breakdown.regulation = reg_score
 	
@@ -223,7 +228,7 @@ func _calculate_enzyme_fitness(enzyme: Enzyme, molecules: Dictionary, genes: Dic
 	return breakdown
 
 ## Calculate how well a gene's regulation matches metabolic needs
-func _calculate_regulation_fitness(gene: Gene, molecules: Dictionary) -> float:
+func _calculate_regulation_fitness(gene, molecules: Dictionary) -> float:
 	if gene.activators.is_empty() and gene.repressors.is_empty():
 		return 0.4  ## Constitutive = mediocre
 	
@@ -272,7 +277,7 @@ func _find_elimination_candidates(enzymes: Dictionary, fitness: Dictionary) -> D
 	var adjusted_threshold = elimination_threshold * pressure_multiplier
 	
 	for enz_id in enzymes:
-		var enzyme: Enzyme = enzymes[enz_id]
+		var enzyme = enzymes[enz_id]
 		
 		## Never eliminate source/sink enzymes
 		if enzyme.is_source() or enzyme.is_sink():
@@ -304,7 +309,7 @@ func _find_elite_enzymes(enzymes: Dictionary, fitness: Dictionary) -> Array[Stri
 	var elite: Array[String] = []
 	
 	for enz_id in enzymes:
-		var enzyme: Enzyme = enzymes[enz_id]
+		var enzyme = enzymes[enz_id]
 		
 		## Skip source/sink
 		if enzyme.is_source() or enzyme.is_sink():
@@ -324,7 +329,7 @@ func _find_competing_enzymes(enzymes: Dictionary, fitness: Dictionary) -> Array[
 	var checked: Dictionary = {}
 	
 	for enz_id_a in enzymes:
-		var enzyme_a: Enzyme = enzymes[enz_id_a]
+		var enzyme_a = enzymes[enz_id_a]
 		if enzyme_a.reactions.is_empty():
 			continue
 		
@@ -342,7 +347,7 @@ func _find_competing_enzymes(enzymes: Dictionary, fitness: Dictionary) -> Array[
 				continue
 			checked[pair_str] = true
 			
-			var enzyme_b: Enzyme = enzymes[enz_id_b]
+			var enzyme_b = enzymes[enz_id_b]
 			if enzyme_b.reactions.is_empty():
 				continue
 			
@@ -365,7 +370,7 @@ func _find_competing_enzymes(enzymes: Dictionary, fitness: Dictionary) -> Array[
 	return competitions
 
 ## Check if two reactions compete for same substrates/products
-func _reactions_compete(rxn_a: Reaction, rxn_b: Reaction) -> bool:
+func _reactions_compete(rxn_a, rxn_b) -> bool:
 	## Same substrates?
 	for sub in rxn_a.substrates:
 		if rxn_b.substrates.has(sub):
@@ -378,34 +383,36 @@ func _reactions_compete(rxn_a: Reaction, rxn_b: Reaction) -> bool:
 	
 	return false
 
-## Check if enzyme is redundant (same reaction, lower fitness than alternative)
-func _is_redundant(enzyme: Enzyme, all_enzymes: Dictionary, fitness: Dictionary) -> bool:
+## Check if enzyme is redundant with a better alternative
+func _is_redundant(enzyme, enzymes: Dictionary, fitness: Dictionary) -> bool:
 	if enzyme.reactions.is_empty():
 		return false
 	
-	var my_rxn = enzyme.reactions[0]
-	var my_fit = fitness.get(enzyme.id, 0.0)
+	var rxn = enzyme.reactions[0]
+	var enz_id = enzyme.enzyme_id if "enzyme_id" in enzyme else enzyme.id
+	var my_fitness = fitness.get(enz_id, 0.0)
 	
-	for other_id in all_enzymes:
-		if other_id == enzyme.id:
+	for other_id in enzymes:
+		if other_id == enz_id:
 			continue
 		
-		var other: Enzyme = all_enzymes[other_id]
+		var other = enzymes[other_id]
 		if other.reactions.is_empty():
 			continue
 		
 		var other_rxn = other.reactions[0]
 		
-		## Check if same reaction (same substrates AND products)
-		if _reactions_identical(my_rxn, other_rxn):
-			var other_fit = fitness.get(other_id, 0.0)
+		## Check if they catalyze exactly the same reaction
+		if _reactions_identical(rxn, other_rxn):
+			var other_fitness = fitness.get(other_id, 0.0)
 			## Redundant if other is significantly better
-			if other_fit > my_fit + 0.2:
+			if other_fitness > my_fitness + 0.2:
 				return true
 	
 	return false
 
-func _reactions_identical(rxn_a: Reaction, rxn_b: Reaction) -> bool:
+## Check if two reactions are identical
+func _reactions_identical(rxn_a, rxn_b) -> bool:
 	if rxn_a.substrates.size() != rxn_b.substrates.size():
 		return false
 	if rxn_a.products.size() != rxn_b.products.size():
@@ -425,18 +432,18 @@ func _reactions_identical(rxn_a: Reaction, rxn_b: Reaction) -> bool:
 
 #region Adaptive Regulation
 
-## Calculate gene regulation changes based on fitness landscape
-func _calculate_adaptive_regulation(genes: Dictionary, enzymes: Dictionary, fitness: Dictionary, molecules: Dictionary) -> Dictionary:
+## Calculate gene regulation adjustments based on fitness landscape
+func _calculate_adaptive_regulation(genes: Dictionary, enzymes: Dictionary, fitness: Dictionary, _molecules: Dictionary) -> Dictionary:
 	var adjustments: Dictionary = {}
 	
 	for gene_id in genes:
-		var gene: Gene = genes[gene_id]
+		var gene = genes[gene_id]
 		
-		if not enzymes.has(gene.enzyme_id):
+		## Skip if gene doesn't control an enzyme we're tracking
+		if not enzymes.has(gene_id):
 			continue
 		
-		var enzyme: Enzyme = enzymes[gene.enzyme_id]
-		var fit = fitness.get(gene.enzyme_id, 0.5)
+		var fit = fitness.get(gene_id, 0.5)
 		
 		## High fitness enzyme: maybe increase basal rate
 		if fit > 0.7 and gene.basal_rate < 0.001:

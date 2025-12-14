@@ -106,7 +106,6 @@ func _create_simulator() -> void:
 	sim_engine.simulation_updated.connect(_on_simulation_updated)
 	sim_engine.simulation_started.connect(_on_simulation_started)
 	sim_engine.simulation_stopped.connect(_on_simulation_stopped)
-	sim_engine.molecule_added.connect(_on_molecule_added)
 	sim_engine.enzyme_added.connect(_on_enzyme_added)
 	sim_engine.gene_added.connect(_on_gene_added)
 
@@ -608,9 +607,7 @@ func _move_panel_to(panel: DockPanel, target_container: Control, target_index: i
 
 #region Entity Signal Handlers
 
-func _on_molecule_added(molecule) -> void:
-	if molecule_panel:
-		molecule_panel.add_item(molecule, "molecule")
+
 
 func _on_enzyme_added(enzyme) -> void:
 	if enzyme_reaction_panel:

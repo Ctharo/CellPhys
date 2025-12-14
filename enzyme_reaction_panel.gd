@@ -35,10 +35,38 @@ class EnzymeReactionEntry:
 	var lock_button: CheckBox
 	var name_label: Label
 	var slider: HSlider
-	var spinbox: ScientificSpinBox
+	var spinbox: SpinBox
 	var info_label: Label
 	var reaction_container: VBoxContainer
 	var reaction_labels: Array[RichTextLabel] = []
+
+#endregion
+
+#region Label Settings Cache
+
+var _label_settings_title: LabelSettings
+var _label_settings_normal: LabelSettings
+var _label_settings_small: LabelSettings
+var _label_settings_info: LabelSettings
+var _label_settings_reaction_header: LabelSettings
+
+func _create_label_settings() -> void:
+	_label_settings_title = LabelSettings.new()
+	_label_settings_title.font_size = 13
+	
+	_label_settings_normal = LabelSettings.new()
+	_label_settings_normal.font_size = 13
+	
+	_label_settings_small = LabelSettings.new()
+	_label_settings_small.font_size = 11
+	
+	_label_settings_info = LabelSettings.new()
+	_label_settings_info.font_size = 10
+	_label_settings_info.font_color = Color(0.5, 0.5, 0.55)
+	
+	_label_settings_reaction_header = LabelSettings.new()
+	_label_settings_reaction_header.font_size = 10
+	_label_settings_reaction_header.font_color = Color(0.45, 0.55, 0.65)
 
 #endregion
 
@@ -55,6 +83,7 @@ var title_label: Label
 
 func _init() -> void:
 	add_theme_constant_override("separation", 8)
+	_create_label_settings()
 
 func _ready() -> void:
 	_create_header()
@@ -67,19 +96,18 @@ func _create_header() -> void:
 	## Title
 	title_label = Label.new()
 	title_label.text = "Enzymes & Reactions"
-	title_label.add_theme_font_size_override("font_size", 13)
+	title_label.label_settings = _label_settings_title
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header_container.add_child(title_label)
 	
 	## Global unit selector
 	var unit_label = Label.new()
 	unit_label.text = "Unit:"
-	unit_label.add_theme_font_size_override("font_size", 11)
+	unit_label.label_settings = _label_settings_small
 	header_container.add_child(unit_label)
 	
 	global_unit_option = OptionButton.new()
 	global_unit_option.custom_minimum_size = Vector2(60, 0)
-	global_unit_option.add_theme_font_size_override("font_size", 11)
 	for i in range(UNIT_NAMES.size()):
 		global_unit_option.add_item(UNIT_NAMES[i], i)
 	global_unit_option.item_selected.connect(_on_global_unit_changed)
@@ -92,7 +120,6 @@ func _create_header() -> void:
 	## Category lock
 	category_lock_button = CheckBox.new()
 	category_lock_button.text = "Lock All"
-	category_lock_button.add_theme_font_size_override("font_size", 11)
 	category_lock_button.tooltip_text = "Lock all enzymes from simulation changes"
 	category_lock_button.toggled.connect(_on_category_lock_toggled)
 	header_container.add_child(category_lock_button)
@@ -120,7 +147,7 @@ func clear() -> void:
 			child.queue_free()
 	entries.clear()
 
-func setup_enzymes_and_reactions(enzymes: Array, reactions: Array) -> void:
+func setup_enzymes_and_reactions(enzymes: Array, _reactions: Array) -> void:
 	## Clear existing entries but keep header
 	var children_to_remove: Array[Node] = []
 	for child in get_children():
@@ -149,7 +176,7 @@ func add_enzyme(enzyme, reactions_for_enzyme: Array = []) -> void:
 	var enz_reactions = reactions_for_enzyme if not reactions_for_enzyme.is_empty() else _get_enzyme_reactions(enzyme)
 	_create_enzyme_entry(enzyme, enz_reactions)
 
-func update_values(enzymes: Array, reactions: Array) -> void:
+func update_values(enzymes: Array, _reactions: Array) -> void:
 	for enzyme in enzymes:
 		var enz_id = _get_enzyme_id(enzyme)
 		if not entries.has(enz_id):
@@ -174,6 +201,10 @@ func set_category_locked(locked: bool) -> void:
 	for entry in entries.values():
 		entry.lock_button.disabled = locked
 		_update_lock_visual(entry)
+
+func apply_element_sizing() -> void:
+	## Called when layout settings change - can be expanded if needed
+	pass
 
 #endregion
 
@@ -224,7 +255,7 @@ func _create_enzyme_entry(enzyme, reactions_for_enzyme: Array) -> void:
 	entry.name_label = Label.new()
 	entry.name_label.text = entry.enzyme_name
 	entry.name_label.custom_minimum_size = Vector2(90, 0)
-	entry.name_label.add_theme_font_size_override("font_size", 13)
+	entry.name_label.label_settings = _label_settings_normal
 	entry.name_label.clip_text = true
 	entry.header_row.add_child(entry.name_label)
 	
@@ -239,8 +270,8 @@ func _create_enzyme_entry(enzyme, reactions_for_enzyme: Array) -> void:
 	entry.slider.value_changed.connect(_on_slider_changed.bind(entry.enzyme_id))
 	entry.header_row.add_child(entry.slider)
 	
-	## ScientificSpinBox for concentration
-	entry.spinbox = ScientificSpinBox.new()
+	## SpinBox for concentration
+	entry.spinbox = SpinBox.new()
 	entry.spinbox.min_value = 0.0
 	entry.spinbox.max_value = _get_spinbox_max_for_unit(entry.current_unit)
 	entry.spinbox.step = 0.00001
@@ -248,8 +279,7 @@ func _create_enzyme_entry(enzyme, reactions_for_enzyme: Array) -> void:
 	entry.spinbox.allow_greater = true
 	entry.spinbox.allow_lesser = false
 	entry.spinbox.select_all_on_focus = true
-	entry.spinbox.suffix = UNIT_NAMES[entry.current_unit]
-	entry.spinbox.add_theme_font_size_override("font_size", 11)
+	entry.spinbox.suffix = " " + UNIT_NAMES[entry.current_unit]
 	entry.spinbox.value_changed.connect(_on_spinbox_changed.bind(entry.enzyme_id))
 	entry.header_row.add_child(entry.spinbox)
 	
@@ -257,8 +287,7 @@ func _create_enzyme_entry(enzyme, reactions_for_enzyme: Array) -> void:
 	var degrade_str = "t½=%.0fs" % _get_enzyme_half_life(enzyme) if _get_enzyme_degradable(enzyme) else "stable"
 	entry.info_label = Label.new()
 	entry.info_label.text = "(%s)" % degrade_str
-	entry.info_label.add_theme_font_size_override("font_size", 10)
-	entry.info_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.55))
+	entry.info_label.label_settings = _label_settings_info
 	entry.header_row.add_child(entry.info_label)
 	
 	card_vbox.add_child(entry.header_row)
@@ -270,8 +299,7 @@ func _create_enzyme_entry(enzyme, reactions_for_enzyme: Array) -> void:
 		
 		var rxn_header = Label.new()
 		rxn_header.text = "Catalyzes:"
-		rxn_header.add_theme_font_size_override("font_size", 10)
-		rxn_header.add_theme_color_override("font_color", Color(0.45, 0.55, 0.65))
+		rxn_header.label_settings = _label_settings_reaction_header
 		entry.reaction_container.add_child(rxn_header)
 		
 		for rxn in reactions_for_enzyme:
@@ -280,7 +308,6 @@ func _create_enzyme_entry(enzyme, reactions_for_enzyme: Array) -> void:
 			rxn_label.fit_content = true
 			rxn_label.scroll_active = false
 			rxn_label.custom_minimum_size = Vector2(0, 20)
-			rxn_label.add_theme_font_size_override("normal_font_size", 11)
 			rxn_label.text = _format_reaction(rxn)
 			entry.reaction_container.add_child(rxn_label)
 			entry.reaction_labels.append(rxn_label)
@@ -304,7 +331,7 @@ func _update_entry_display(entry: EnzymeReactionEntry) -> void:
 	
 	var display_value = entry.base_concentration_mm * UNIT_MULTIPLIERS[entry.current_unit]
 	entry.slider.value = display_value
-	entry.spinbox.value = display_value
+	entry.spinbox.set_value_no_signal(display_value)
 	
 	entry.is_updating = false
 
@@ -317,7 +344,7 @@ func _update_all_units() -> void:
 		
 		## Update spinbox range and suffix
 		entry.spinbox.max_value = _get_spinbox_max_for_unit(entry.current_unit)
-		entry.spinbox.suffix = UNIT_NAMES[entry.current_unit]
+		entry.spinbox.suffix = " " + UNIT_NAMES[entry.current_unit]
 		
 		## Update displayed values
 		_update_entry_display(entry)

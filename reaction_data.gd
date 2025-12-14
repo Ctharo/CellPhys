@@ -60,15 +60,45 @@ func _reset_runtime_state() -> void:
 	current_useful_work = 0.0
 	current_heat_generated = 0.0
 
-#endregion
-
-#region Type Checking
-
 func is_source() -> bool:
 	return substrates.is_empty() and not products.is_empty()
 
 func is_sink() -> bool:
 	return not substrates.is_empty() and products.is_empty()
+
+#endregion
+
+#region Combined Rate Calculation
+
+## Calculate all rates for this reaction - called by Simulator
+## molecules: Dictionary of MoleculeData
+## enzymes: Dictionary of EnzymeData  
+## temp: Temperature in Kelvin (from CellData)
+func calculate_rates(molecules: Dictionary, enzymes: Dictionary, temp: float) -> void:
+	## Update temperature if provided
+	if temp > 0:
+		temperature = temp
+	
+	## Get enzyme concentration
+	var enzyme_conc: float = 0.0
+	if enzyme:
+		enzyme_conc = enzyme.concentration
+	else:
+		## Try to find enzyme from enzymes dictionary if enzyme reference not set
+		for enz_id in enzymes:
+			var enz = enzymes[enz_id]
+			for rxn in enz.reactions:
+				if rxn == self or (rxn.reaction_id == reaction_id and reaction_id != ""):
+					enzyme_conc = enz.concentration
+					enzyme = enz
+					break
+			if enzyme_conc > 0:
+				break
+	
+	## Calculate rates
+	calculate_forward_rate(molecules, enzyme_conc)
+	calculate_reverse_rate(molecules, enzyme_conc)
+	calculate_energy_partition(get_net_rate())
 
 #endregion
 
@@ -92,13 +122,13 @@ func calculate_actual_delta_g(molecules: Dictionary) -> float:
 	
 	for product in products:
 		if molecules.has(product):
-			var mol: MoleculeData = molecules[product]
+			var mol = molecules[product]
 			var conc = max(mol.concentration, 1e-6)
 			q *= pow(conc, products[product])
 	
 	for substrate in substrates:
 		if molecules.has(substrate):
-			var mol: MoleculeData = molecules[substrate]
+			var mol = molecules[substrate]
 			var conc = max(mol.concentration, 1e-6)
 			q /= pow(conc, substrates[substrate])
 	

@@ -31,6 +31,29 @@ class GeneEntry:
 
 #endregion
 
+#region Label Settings Cache
+
+var _label_settings_title: LabelSettings
+var _label_settings_normal: LabelSettings
+var _label_settings_small: LabelSettings
+var _label_settings_arrow: LabelSettings
+
+func _create_label_settings() -> void:
+	_label_settings_title = LabelSettings.new()
+	_label_settings_title.font_size = 13
+	
+	_label_settings_normal = LabelSettings.new()
+	_label_settings_normal.font_size = 14
+	
+	_label_settings_small = LabelSettings.new()
+	_label_settings_small.font_size = 11
+	
+	_label_settings_arrow = LabelSettings.new()
+	_label_settings_arrow.font_size = 14
+	_label_settings_arrow.font_color = Color(0.5, 0.5, 0.5)
+
+#endregion
+
 #region Header UI
 
 var header_container: HBoxContainer
@@ -43,6 +66,7 @@ var title_label: Label
 
 func _init() -> void:
 	add_theme_constant_override("separation", 6)
+	_create_label_settings()
 
 func _ready() -> void:
 	_create_header()
@@ -55,14 +79,13 @@ func _create_header() -> void:
 	## Title
 	title_label = Label.new()
 	title_label.text = panel_title
-	title_label.add_theme_font_size_override("font_size", 13)
+	title_label.label_settings = _label_settings_title
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header_container.add_child(title_label)
 	
 	## Category lock
 	category_lock_button = CheckBox.new()
 	category_lock_button.text = "Lock All"
-	category_lock_button.add_theme_font_size_override("font_size", 11)
 	category_lock_button.tooltip_text = "Lock all genes (no expression changes)"
 	category_lock_button.toggled.connect(_on_category_lock_toggled)
 	header_container.add_child(category_lock_button)
@@ -83,6 +106,13 @@ func _load_settings() -> void:
 #region Public API
 
 func clear() -> void:
+	for child in get_children():
+		if child != header_container and child is not HSeparator:
+			child.queue_free()
+	gene_entries.clear()
+
+func setup_genes(genes: Dictionary, _molecules: Dictionary, enzymes: Dictionary) -> void:
+	## Clear existing entries but keep header
 	var children_to_remove: Array[Node] = []
 	for child in get_children():
 		if child != header_container and child is not HSeparator:
@@ -90,9 +120,6 @@ func clear() -> void:
 	for child in children_to_remove:
 		child.queue_free()
 	gene_entries.clear()
-
-func setup_genes(genes: Dictionary, molecules: Dictionary, enzymes: Dictionary) -> void:
-	clear()
 	
 	if genes.is_empty():
 		var empty_label = Label.new()
@@ -101,37 +128,40 @@ func setup_genes(genes: Dictionary, molecules: Dictionary, enzymes: Dictionary) 
 		add_child(empty_label)
 		return
 	
-	for gene in genes.values():
-		var enzyme = enzymes.get(_get_enzyme_id(gene))
+	## Create entries for each gene
+	for gene_id in genes:
+		var gene = genes[gene_id]
+		var enzyme = enzymes.get(gene_id) if enzymes else null
 		_create_gene_entry(gene, enzyme)
 
-func update_genes(genes: Dictionary, molecules: Dictionary, enzymes: Dictionary) -> void:
-	for gene in genes.values():
-		var enzyme_id = _get_enzyme_id(gene)
-		if not gene_entries.has(enzyme_id):
+func add_gene(gene, enzyme) -> void:
+	var gene_enzyme_id = _get_enzyme_id(gene)
+	if gene_entries.has(gene_enzyme_id):
+		return
+	_create_gene_entry(gene, enzyme)
+
+func update_values(genes: Dictionary, enzymes: Dictionary) -> void:
+	for gene_id in genes:
+		if not gene_entries.has(gene_id):
 			continue
 		
-		var entry = gene_entries[enzyme_id] as GeneEntry
-		var enzyme = enzymes.get(enzyme_id)
+		var gene = genes[gene_id]
+		var enzyme = enzymes.get(gene_id) if enzymes else null
+		var entry = gene_entries[gene_id] as GeneEntry
 		
 		## Update status
 		var fold_change = _get_fold_change(gene)
-		var status_color = _get_status_color(fold_change)
-		entry.status_label.text = "%.1fx" % fold_change
-		entry.status_label.add_theme_color_override("font_color", status_color)
+		entry.status_label.text = _get_status_text(fold_change)
+		entry.status_label.label_settings.font_color = _get_status_color(fold_change)
 		
-		## Update enzyme output
-		if enzyme:
+		## Update enzyme concentration display
+		if enzyme and entry.output_label:
 			var conc = _get_enzyme_concentration(enzyme)
-			entry.output_label.text = "→ [b]%s[/b]: %.4f mM" % [
-				_get_enzyme_name(enzyme), conc
-			]
+			entry.output_label.text = "[color=#888]Output:[/color] %.4f mM" % conc
 
-func add_gene(gene, enzyme) -> void:
-	var enzyme_id = _get_enzyme_id(gene)
-	if gene_entries.has(enzyme_id):
-		return
-	_create_gene_entry(gene, enzyme)
+## Alias for update_values - called by main.gd
+func update_genes(genes: Dictionary, _molecules: Dictionary, enzymes: Dictionary) -> void:
+	update_values(genes, enzymes)
 
 func set_category_locked(locked: bool) -> void:
 	category_locked = locked
@@ -183,73 +213,73 @@ func _create_gene_entry(gene, enzyme) -> void:
 	
 	entry.name_label = Label.new()
 	entry.name_label.text = entry.gene_name
-	entry.name_label.add_theme_font_size_override("font_size", 14)
+	entry.name_label.label_settings = _label_settings_normal
 	entry.header.add_child(entry.name_label)
 	
 	var arrow_label = Label.new()
 	arrow_label.text = "→"
-	arrow_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
+	arrow_label.label_settings = _label_settings_arrow
 	entry.header.add_child(arrow_label)
 	
 	entry.enzyme_label = Label.new()
 	entry.enzyme_label.text = _get_enzyme_name(enzyme) if enzyme else "Unknown"
-	entry.enzyme_label.add_theme_font_size_override("font_size", 14)
+	entry.enzyme_label.label_settings = _label_settings_normal
 	entry.header.add_child(entry.enzyme_label)
 	
 	var spacer = Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	entry.header.add_child(spacer)
 	
+	## Status label showing regulation state
+	var fold_change = _get_fold_change(gene)
+	var status_settings = LabelSettings.new()
+	status_settings.font_size = 11
+	status_settings.font_color = _get_status_color(fold_change)
+	
 	entry.status_label = Label.new()
-	entry.status_label.text = "1.0x"
-	entry.status_label.add_theme_font_size_override("font_size", 13)
+	entry.status_label.text = _get_status_text(fold_change)
+	entry.status_label.label_settings = status_settings
 	entry.header.add_child(entry.status_label)
 	
 	card_content.add_child(entry.header)
 	
 	## Rate control row
 	var rate_row = HBoxContainer.new()
-	rate_row.add_theme_constant_override("separation", 6)
+	rate_row.add_theme_constant_override("separation", 8)
 	
 	var rate_label = Label.new()
-	rate_label.text = "Base rate:"
-	rate_label.add_theme_font_size_override("font_size", 11)
-	rate_label.add_theme_color_override("font_color", Color(0.55, 0.55, 0.6))
+	rate_label.text = "Base Rate:"
+	rate_label.label_settings = _label_settings_small
 	rate_row.add_child(rate_label)
 	
 	entry.rate_slider = HSlider.new()
-	entry.rate_slider.custom_minimum_size = Vector2(100, 0)
-	entry.rate_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	entry.rate_slider.min_value = 0.0
-	entry.rate_slider.max_value = 0.1
-	entry.rate_slider.step = 0.0001
+	entry.rate_slider.min_value = 0.00001
+	entry.rate_slider.max_value = 0.01
+	entry.rate_slider.step = 0.00001
 	entry.rate_slider.value = _get_base_rate(gene)
+	entry.rate_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	entry.rate_slider.editable = not category_locked
 	entry.rate_slider.value_changed.connect(_on_rate_changed.bind(gene_enzyme_id))
 	rate_row.add_child(entry.rate_slider)
 	
 	entry.rate_value = Label.new()
 	entry.rate_value.text = "%.4f" % _get_base_rate(gene)
-	entry.rate_value.custom_minimum_size = Vector2(60, 0)
-	entry.rate_value.add_theme_font_size_override("font_size", 11)
+	entry.rate_value.custom_minimum_size = Vector2(50, 0)
+	entry.rate_value.label_settings = _label_settings_small
 	rate_row.add_child(entry.rate_value)
 	
 	card_content.add_child(rate_row)
 	
-	## Output info
-	entry.output_label = RichTextLabel.new()
-	entry.output_label.bbcode_enabled = true
-	entry.output_label.fit_content = true
-	entry.output_label.scroll_active = false
-	entry.output_label.custom_minimum_size = Vector2(0, 20)
-	entry.output_label.add_theme_font_size_override("normal_font_size", 11)
+	## Output display
 	if enzyme:
-		entry.output_label.text = "→ [b]%s[/b]: %.4f mM" % [
-			_get_enzyme_name(enzyme), _get_enzyme_concentration(enzyme)
-		]
-	else:
-		entry.output_label.text = "→ No enzyme linked"
-	card_content.add_child(entry.output_label)
+		entry.output_label = RichTextLabel.new()
+		entry.output_label.bbcode_enabled = true
+		entry.output_label.fit_content = true
+		entry.output_label.scroll_active = false
+		entry.output_label.custom_minimum_size = Vector2(0, 18)
+		var conc = _get_enzyme_concentration(enzyme)
+		entry.output_label.text = "[color=#888]Output:[/color] %.4f mM" % conc
+		card_content.add_child(entry.output_label)
 	
 	entry.card.add_child(card_content)
 	entry.container.add_child(entry.card)
@@ -310,6 +340,17 @@ func _get_enzyme_name(enzyme) -> String:
 
 func _get_enzyme_concentration(enzyme) -> float:
 	return enzyme.concentration if enzyme else 0.0
+
+func _get_status_text(fold_change: float) -> String:
+	if fold_change > 1.5:
+		return "↑↑"
+	elif fold_change > 1.1:
+		return "↑"
+	elif fold_change < 0.5:
+		return "↓↓"
+	elif fold_change < 0.9:
+		return "↓"
+	return "—"
 
 func _get_status_color(fold_change: float) -> Color:
 	if fold_change > 1.2:

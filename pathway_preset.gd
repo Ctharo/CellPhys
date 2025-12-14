@@ -87,7 +87,7 @@ static func create_feedback_inhibition() -> PathwayPreset:
 	var preset = PathwayPreset.new()
 	preset.pathway_name = "Feedback Inhibition Loop"
 	preset.description = "Demonstrates negative feedback where the end product inhibits the first enzyme, creating homeostasis."
-	preset.tags = ["feedback", "regulation", "homeostasis", "educational"]
+	preset.tags = ["feedback", "regulation", "homeostasis", "educational"] as Array[String]
 	preset.difficulty = 2
 	
 	## Molecules: Substrate → Intermediate → Product
@@ -166,7 +166,7 @@ static func create_branched_pathway() -> PathwayPreset:
 	var preset = PathwayPreset.new()
 	preset.pathway_name = "Branched Pathway"
 	preset.description = "A pathway where one intermediate feeds into two different branches, demonstrating metabolic decision points."
-	preset.tags = ["branched", "competition", "intermediate"]
+	preset.tags = ["branched", "competition", "intermediate"] as Array[String]
 	preset.difficulty = 3
 	
 	## Molecules
@@ -248,7 +248,7 @@ static func create_oscillator() -> PathwayPreset:
 	var preset = PathwayPreset.new()
 	preset.pathway_name = "Metabolic Oscillator"
 	preset.description = "A repressilator-style circuit that creates oscillating concentrations through delayed negative feedback."
-	preset.tags = ["oscillator", "dynamics", "advanced", "repressilator"]
+	preset.tags = ["oscillator", "dynamics", "advanced", "repressilator"] as Array[String]
 	preset.difficulty = 4
 	
 	## Three molecules in a cycle

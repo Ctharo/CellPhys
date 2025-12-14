@@ -55,7 +55,7 @@ func _update_degradation_rate() -> void:
 ## Create a runtime instance from this resource template
 func create_instance() -> EnzymeData:
 	var instance = duplicate(false) as EnzymeData  ## Shallow duplicate
-	instance.reactions = []
+	instance.reactions = [] as Array[ReactionData]
 	for rxn in reactions:
 		var rxn_instance = rxn.create_instance()
 		rxn_instance.enzyme = instance

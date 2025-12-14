@@ -6,6 +6,11 @@ extends Resource
 #region Thermal State
 
 @export_group("Thermal State")
+@export var temperature: float = 310.0:  ## Temperature in Kelvin (37°C body temp)
+	set(value):
+		temperature = clampf(value, 273.0, 373.0)  ## Keep within 0-100°C
+		emit_changed()
+
 @export var heat: float = 50.0:
 	set(value):
 		heat = value
@@ -13,7 +18,7 @@ extends Resource
 
 @export var min_heat_threshold: float = 20.0
 @export var max_heat_threshold: float = 150.0
-@export var heat_dissipation_rate: float = 0.01  ## 1% Per second
+@export var heat_dissipation_rate: float = 0.01  ## 1% per second
 
 #endregion
 
@@ -47,6 +52,7 @@ func _init() -> void:
 ## Create a fresh instance
 static func create_new() -> CellData:
 	var cell = CellData.new()
+	cell.temperature = 310.0
 	cell.heat = 50.0
 	cell.usable_energy = 100.0
 	cell.is_alive = true
@@ -58,6 +64,7 @@ func create_instance() -> CellData:
 
 ## Reset to initial state
 func reset() -> void:
+	temperature = 310.0
 	heat = 50.0
 	usable_energy = 100.0
 	total_energy_generated = 0.0
@@ -74,7 +81,7 @@ func update(delta: float, reactions: Array) -> void:
 	if not is_alive:
 		return
 	
-	# update_heat(delta, reactions) HACK
+	update_heat(delta, reactions)
 	update_energy(delta, reactions)
 	check_survival()
 
@@ -88,6 +95,7 @@ func update_heat(delta: float, reactions: Array) -> void:
 	
 	## Natural dissipation
 	heat -= heat * heat_dissipation_rate * delta
+	heat = maxf(0.0, heat)
 
 func update_energy(delta: float, reactions: Array) -> void:
 	var energy_change = 0.0
@@ -101,10 +109,10 @@ func update_energy(delta: float, reactions: Array) -> void:
 			energy_change += reaction.current_useful_work
 	
 	usable_energy += energy_change * delta
-	usable_energy = max(usable_energy, 0.0)
+	usable_energy = maxf(usable_energy, 0.0)
 
 func check_survival() -> void:
-	# TEST -> Keep alive for now, dying immediately
+	## TEST -> Keep alive for now
 	return
 	
 	@warning_ignore("unreachable_code")
@@ -121,10 +129,11 @@ func check_survival() -> void:
 
 func get_thermal_status() -> Dictionary:
 	return {
+		"temperature": temperature,
 		"heat": heat,
 		"min_threshold": min_heat_threshold,
 		"max_threshold": max_heat_threshold,
-		"heat_ratio": heat / max_heat_threshold,
+		"heat_ratio": heat / max_heat_threshold if max_heat_threshold > 0 else 0.0,
 		"is_alive": is_alive
 	}
 
@@ -138,8 +147,8 @@ func get_energy_status() -> Dictionary:
 	}
 
 func _to_string() -> String:
-	return "CellData(heat=%.1f, energy=%.1f, %s)" % [
-		heat, usable_energy, "alive" if is_alive else "dead"
+	return "CellData(T=%.1fK, heat=%.1f, energy=%.1f, %s)" % [
+		temperature, heat, usable_energy, "alive" if is_alive else "dead"
 	]
 
 #endregion
