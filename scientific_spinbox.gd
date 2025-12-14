@@ -129,15 +129,6 @@ func _create_ui() -> void:
 	_increment_btn.focus_mode = Control.FOCUS_NONE
 	add_child(_increment_btn)
 
-## Apply font size override (handles calls before _ready)
-func add_theme_font_size_override(name: String, size: int) -> void:
-	if name == "font_size":
-		_pending_font_size = size
-		if _line_edit:
-			_line_edit.add_theme_font_size_override("font_size", size)
-		if _suffix_label:
-			_suffix_label.add_theme_font_size_override("font_size", size)
-
 #endregion
 
 #region Display Formatting
