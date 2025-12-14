@@ -47,7 +47,7 @@ static func create_linear_pathway(steps: int = 3) -> PathwayPreset:
 	var preset = PathwayPreset.new()
 	preset.pathway_name = "Linear Pathway (%d steps)" % steps
 	preset.description = "A simple linear metabolic pathway demonstrating sequential reactions."
-	preset.tags = ["linear", "basic", "educational"]
+	preset.tags = ["linear", "basic", "educational"] as Array[String]
 	preset.difficulty = 1
 	
 	## Create molecules
