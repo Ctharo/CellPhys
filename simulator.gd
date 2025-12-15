@@ -1,5 +1,5 @@
 ## Core simulation engine using Resource-based data classes
-## No legacy RefCounted classes - all entities are *Data types
+## Integrates molecules, enzymes, reactions, genes, and cell state
 class_name Simulator
 extends Node
 
@@ -92,7 +92,7 @@ var lock_evolution: bool:
 
 #endregion
 
-#region Core Data (Resource-based only)
+#region Core Data
 
 var molecules: Dictionary = {}      ## {name: MoleculeData}
 var enzymes: Dictionary = {}        ## {id: EnzymeData}
@@ -138,6 +138,34 @@ func _ready() -> void:
 	
 	if auto_generate:
 		apply_config(SimulationConfig.create_default())
+
+
+## Reset simulation to initial state
+func reset() -> void:
+	simulation_time = 0.0
+	total_enzyme_synthesized = 0.0
+	total_enzyme_degraded = 0.0
+	total_mutations = 0
+	mutation_history.clear()
+	
+	molecules.clear()
+	enzymes.clear()
+	reactions.clear()
+	genes.clear()
+	
+	molecule_history.clear()
+	enzyme_history.clear()
+	time_history.clear()
+	
+	if cell:
+		cell.reset()
+	else:
+		cell = CellData.create_new()
+	
+	is_initialized = false
+	is_running = false
+	paused = true
+
 
 ## Apply a simulation configuration and generate pathway
 func apply_config(config: SimulationConfig) -> void:
@@ -187,6 +215,7 @@ func apply_config(config: SimulationConfig) -> void:
 	is_initialized = true
 	config_applied.emit(config)
 
+
 func start_simulation() -> void:
 	if not is_initialized:
 		apply_config(current_config if current_config else SimulationConfig.create_default())
@@ -195,10 +224,12 @@ func start_simulation() -> void:
 	is_running = true
 	simulation_started.emit()
 
+
 func stop_simulation() -> void:
 	paused = true
 	is_running = false
 	simulation_stopped.emit()
+
 
 func has_data() -> bool:
 	return is_initialized and not molecules.is_empty()
@@ -212,14 +243,17 @@ func add_molecule(mol: MoleculeData) -> void:
 	molecule_history[mol.molecule_name] = []
 	molecule_added.emit(mol)
 
+
 func remove_molecule(name: String) -> void:
 	molecules.erase(name)
 	molecule_history.erase(name)
+
 
 func add_enzyme(enz: EnzymeData) -> void:
 	enzymes[enz.enzyme_id] = enz
 	enzyme_history[enz.enzyme_id] = []
 	enzyme_added.emit(enz)
+
 
 func remove_enzyme(id: String) -> void:
 	if genes.has(id):
@@ -227,9 +261,11 @@ func remove_enzyme(id: String) -> void:
 	enzymes.erase(id)
 	enzyme_history.erase(id)
 
+
 func add_gene(gene: GeneData) -> void:
 	genes[gene.enzyme_id] = gene
 	gene_added.emit(gene)
+
 
 func get_all_reactions() -> Array[ReactionData]:
 	return reactions
@@ -265,14 +301,23 @@ func _process(delta: float) -> void:
 	if not lock_molecules and not lock_reactions:
 		_apply_reactions(scaled_delta)
 	
-	## 6. Update cell state
+	## 6. Apply mutations (if enabled)
+	if not lock_mutations and mutation_system:
+		_apply_mutations(scaled_delta)
+	
+	## 7. Apply evolution (if enabled)
+	if not lock_evolution and evolution_system:
+		_apply_evolution(scaled_delta)
+	
+	## 8. Update cell state
 	cell.update(scaled_delta, reactions)
 	
-	## 7. Record history
+	## 9. Record history
 	_record_history()
 	
-	## 8. Emit update
+	## 10. Emit update
 	simulation_updated.emit(get_simulation_data())
+
 
 func _update_gene_expression(_delta: float) -> void:
 	for gene_id in genes:
@@ -281,18 +326,19 @@ func _update_gene_expression(_delta: float) -> void:
 			continue
 		gene.calculate_expression_rate(molecules)
 
+
 func _apply_enzyme_degradation(delta: float) -> void:
 	for enz_id in enzymes:
 		var enzyme: EnzymeData = enzymes[enz_id]
 		if enzyme.is_locked or not enzyme.is_degradable:
 			continue
 		
-		var degraded = enzyme.concentration * enzyme.degradation_rate * delta
-		enzyme.concentration = maxf(0.0, enzyme.concentration - degraded)
+		var degraded = enzyme.apply_degradation(delta)
 		total_enzyme_degraded += degraded
 		
 		if enzyme.concentration < 1e-9:
 			enzyme_depleted.emit(enzyme)
+
 
 func _apply_enzyme_synthesis(delta: float) -> void:
 	for gene_id in genes:
@@ -309,15 +355,18 @@ func _apply_enzyme_synthesis(delta: float) -> void:
 			enzyme.concentration += synthesized
 			total_enzyme_synthesized += synthesized
 
+
 func _update_reaction_rates() -> void:
+	var temp = cell.temperature if cell else 310.0
 	for rxn in reactions:
-		rxn.calculate_rates(molecules, enzymes, cell.temperature if cell else 310.0)
+		rxn.calculate_rates(molecules, enzymes, temp)
+
 
 func _apply_reactions(delta: float) -> void:
 	var changes: Dictionary = {}
 	
 	for rxn in reactions:
-		var net_rate = rxn.current_forward_rate - rxn.current_reverse_rate
+		var net_rate = rxn.get_net_rate()
 		
 		for substrate in rxn.substrates:
 			var stoich = rxn.substrates[substrate]
@@ -340,80 +389,180 @@ func _apply_reactions(delta: float) -> void:
 			continue
 		mol.concentration = maxf(0.0, mol.concentration + changes[mol_name])
 
+
+func _apply_mutations(delta: float) -> void:
+	if not mutation_system:
+		return
+	
+	## Build snapshot dictionary for mutation system
+	var snapshot = {
+		"enzymes": enzymes,
+		"molecules": molecules,
+		"genes": genes,
+		"reactions": reactions
+	}
+	
+	var result = mutation_system.calculate_mutations(snapshot, delta, simulation_time)
+	
+	## Apply enzyme modifications
+	for enz_id in result.enzyme_modifications:
+		if enzymes.has(enz_id):
+			var mods = result.enzyme_modifications[enz_id]
+			_apply_enzyme_mods(enzymes[enz_id], mods)
+	
+	## Apply gene modifications
+	for gene_id in result.gene_modifications:
+		if genes.has(gene_id):
+			var mods = result.gene_modifications[gene_id]
+			_apply_gene_mods(genes[gene_id], mods)
+	
+	## Add new enzymes
+	for new_enz_data in result.new_enzymes:
+		add_enzyme(new_enz_data.enzyme)
+		if new_enz_data.has("gene"):
+			add_gene(new_enz_data.gene)
+		for rxn in new_enz_data.enzyme.reactions:
+			reactions.append(rxn)
+	
+	## Add new molecules
+	for new_mol in result.new_molecules:
+		add_molecule(new_mol)
+	
+	## Track mutations
+	total_mutations += result.point_mutations + result.duplications + result.novel_creations + result.regulatory_mutations
+	
+	if result.point_mutations > 0 or result.duplications > 0 or result.novel_creations > 0:
+		mutation_history.append({
+			"time": simulation_time,
+			"point": result.point_mutations,
+			"duplications": result.duplications,
+			"novel": result.novel_creations,
+			"regulatory": result.regulatory_mutations
+		})
+		if mutation_history.size() > max_mutation_history:
+			mutation_history.pop_front()
+
+
+func _apply_enzyme_mods(enzyme: EnzymeData, mods: Dictionary) -> void:
+	if mods.has("vmax") and not enzyme.reactions.is_empty():
+		enzyme.reactions[0].vmax = mods.vmax
+	if mods.has("km") and not enzyme.reactions.is_empty():
+		enzyme.reactions[0].km = mods.km
+	if mods.has("efficiency") and not enzyme.reactions.is_empty():
+		enzyme.reactions[0].reaction_efficiency = mods.efficiency
+	if mods.has("delta_g") and not enzyme.reactions.is_empty():
+		enzyme.reactions[0].delta_g = mods.delta_g
+	if mods.has("half_life"):
+		enzyme.half_life = mods.half_life
+		enzyme._update_degradation_rate()
+
+
+func _apply_gene_mods(gene: GeneData, mods: Dictionary) -> void:
+	if mods.has("basal_rate"):
+		gene.basal_rate = mods.basal_rate
+	
+	## Single activator modification (mutation_system returns one at a time)
+	if mods.has("activator_mod"):
+		var act_mod = mods.activator_mod
+		var idx = act_mod.get("index", 0)
+		if idx < gene.activators.size():
+			if act_mod.has("kd"):
+				gene.activators[idx].kd = act_mod.kd
+			if act_mod.has("max_fold"):
+				gene.activators[idx].max_fold_change = act_mod.max_fold
+			if act_mod.has("hill"):
+				gene.activators[idx].hill_coefficient = act_mod.hill
+	
+	## Single repressor modification
+	if mods.has("repressor_mod"):
+		var rep_mod = mods.repressor_mod
+		var idx = rep_mod.get("index", 0)
+		if idx < gene.repressors.size():
+			if rep_mod.has("kd"):
+				gene.repressors[idx].kd = rep_mod.kd
+			if rep_mod.has("max_fold"):
+				gene.repressors[idx].max_fold_change = rep_mod.max_fold
+			if rep_mod.has("hill"):
+				gene.repressors[idx].hill_coefficient = rep_mod.hill
+	
+	## Add new activator
+	if mods.has("new_activator"):
+		var new_act = mods.new_activator
+		gene.add_activator(
+			new_act.molecule,
+			new_act.get("kd", 1.0),
+			new_act.get("max_fold", 5.0),
+			new_act.get("hill", 1.0)
+		)
+	
+	## Add new repressor
+	if mods.has("new_repressor"):
+		var new_rep = mods.new_repressor
+		gene.add_repressor(
+			new_rep.molecule,
+			new_rep.get("kd", 1.0),
+			new_rep.get("max_fold", 5.0),
+			new_rep.get("hill", 1.0)
+		)
+
+
+func _apply_evolution(delta: float) -> void:
+	if not evolution_system:
+		return
+	
+	## Build snapshot dictionary for evolution system
+	var snapshot = {
+		"enzymes": enzymes,
+		"molecules": molecules,
+		"genes": genes,
+		"reactions": reactions
+	}
+	
+	var selection = evolution_system.calculate_selection(snapshot, delta, simulation_time)
+	
+	## Apply fitness boosts
+	for enz_id in selection.boosts:
+		if enzymes.has(enz_id):
+			var boost = selection.boosts[enz_id]
+			enzymes[enz_id].concentration *= (1.0 + boost * delta)
+	
+	## Apply competition losses (reduce concentration of losers)
+	for loser_id in selection.competition_losses:
+		if enzymes.has(loser_id):
+			enzymes[loser_id].concentration *= 0.9  ## 10% reduction per competition loss
+	
+	## Apply gene adjustments
+	for gene_id in selection.gene_adjustments:
+		if genes.has(gene_id):
+			var adjustments = selection.gene_adjustments[gene_id]
+			if adjustments.has("basal_rate"):
+				genes[gene_id].basal_rate = adjustments.basal_rate
+	
+	## Apply eliminations (last, after other adjustments)
+	for enz_id in selection.eliminations:
+		remove_enzyme(enz_id)
+
+
 func _record_history() -> void:
 	time_history.append(simulation_time)
 	if time_history.size() > history_length:
 		time_history.pop_front()
 	
 	for mol_name in molecules:
+		var mol: MoleculeData = molecules[mol_name]
 		if not molecule_history.has(mol_name):
 			molecule_history[mol_name] = []
-		molecule_history[mol_name].append(molecules[mol_name].concentration)
+		molecule_history[mol_name].append(mol.concentration)
 		if molecule_history[mol_name].size() > history_length:
 			molecule_history[mol_name].pop_front()
 	
 	for enz_id in enzymes:
+		var enz: EnzymeData = enzymes[enz_id]
 		if not enzyme_history.has(enz_id):
 			enzyme_history[enz_id] = []
-		enzyme_history[enz_id].append(enzymes[enz_id].concentration)
+		enzyme_history[enz_id].append(enz.concentration)
 		if enzyme_history[enz_id].size() > history_length:
 			enzyme_history[enz_id].pop_front()
-
-#endregion
-
-#region Control
-
-func set_paused(p: bool) -> void:
-	paused = p
-
-func set_time_scale(scale: float) -> void:
-	time_scale = clampf(scale, 0.1, 100.0)
-
-func reset() -> void:
-	simulation_time = 0.0
-	total_enzyme_synthesized = 0.0
-	total_enzyme_degraded = 0.0
-	total_mutations = 0
-	mutation_history.clear()
-	
-	molecules.clear()
-	enzymes.clear()
-	reactions.clear()
-	genes.clear()
-	
-	time_history.clear()
-	molecule_history.clear()
-	enzyme_history.clear()
-	
-	cell = CellData.create_new()
-	
-	is_initialized = false
-	is_running = false
-	paused = true
-
-func isolate_system(system: String) -> void:
-	lock_molecules = system != "molecules"
-	lock_enzymes = system != "enzymes"
-	lock_genes = system != "genes"
-	lock_reactions = system != "reactions"
-	lock_mutations = system != "mutations"
-	lock_evolution = system != "evolution"
-
-func unlock_all() -> void:
-	lock_molecules = false
-	lock_enzymes = false
-	lock_genes = false
-	lock_reactions = false
-	lock_mutations = false
-	lock_evolution = false
-
-func lock_all() -> void:
-	lock_molecules = true
-	lock_enzymes = true
-	lock_genes = true
-	lock_reactions = true
-	lock_mutations = true
-	lock_evolution = true
 
 #endregion
 
@@ -429,6 +578,7 @@ func save_snapshot(path: String, name: String = "", description: String = "") ->
 		snapshot_saved.emit(path)
 	return err
 
+
 func load_snapshot(path: String) -> Error:
 	var snapshot = SimulationSnapshot.load_from_file(path)
 	if not snapshot:
@@ -438,22 +588,28 @@ func load_snapshot(path: String) -> Error:
 	snapshot_loaded.emit(path)
 	return OK
 
+
 func load_pathway(preset: PathwayPreset) -> void:
 	preset.apply_to(self)
 	pathway_loaded.emit(preset)
+
 
 func load_builtin_pathway(pathway_name: String) -> void:
 	var preset: PathwayPreset
 	
 	match pathway_name.to_lower():
-		"linear", "linear_pathway":
-			preset = PathwayPreset.create_linear_pathway()
-		"feedback", "feedback_inhibition":
-			preset = PathwayPreset.create_feedback_inhibition()
-		"branched", "branched_pathway":
-			preset = PathwayPreset.create_branched_pathway()
-		"oscillator", "metabolic_oscillator":
-			preset = PathwayPreset.create_oscillator()
+		"default", "linear", "linear_pathway":
+			preset = PathwayPreset.create_default()
+		"glycolysis":
+			preset = PathwayPreset.create_glycolysis()
+		"krebs", "krebs_cycle", "tca", "citric_acid":
+			preset = PathwayPreset.create_krebs_cycle()
+		"ppp", "pentose_phosphate", "pentose":
+			preset = PathwayPreset.create_pentose_phosphate()
+		"beta_oxidation", "fatty_acid":
+			preset = PathwayPreset.create_beta_oxidation()
+		"urea", "urea_cycle":
+			preset = PathwayPreset.create_urea_cycle()
 		_:
 			push_error("Unknown builtin pathway: %s" % pathway_name)
 			return
@@ -492,6 +648,7 @@ func get_simulation_data() -> Dictionary:
 		"current_config": current_config
 	}
 
+
 func get_protein_expression_stats() -> Dictionary:
 	var stats = {
 		"total_synthesized": total_enzyme_synthesized,
@@ -513,6 +670,7 @@ func get_protein_expression_stats() -> Dictionary:
 	
 	return stats
 
+
 func get_mutation_stats() -> Dictionary:
 	return {
 		"total_mutations": total_mutations,
@@ -528,6 +686,7 @@ func get_mutation_stats() -> Dictionary:
 			"gene": mutation_system.gene_mutation_rate if mutation_system else 0.0
 		}
 	}
+
 
 func get_evolution_stats() -> Dictionary:
 	if not evolution_system:

@@ -1,5 +1,5 @@
 ## PathwayBrowser - Dialog for browsing, previewing, and loading pathway presets
-## Shows built-in pathways and user-saved pathways
+## Shows built-in pathways (real biochemistry) and user-saved pathways
 class_name PathwayBrowser
 extends Window
 
@@ -24,14 +24,16 @@ var current_selection: Resource = null
 
 func _init() -> void:
 	title = "Load Pathway or Snapshot"
-	size = Vector2i(700, 500)
+	size = Vector2i(750, 550)
 	exclusive = true
 	unresizable = false
+
 
 func _ready() -> void:
 	_create_ui()
 	_populate_builtin_pathways()
 	_scan_user_snapshots()
+
 
 func _create_ui() -> void:
 	var main_vbox = VBoxContainer.new()
@@ -50,7 +52,7 @@ func _create_ui() -> void:
 	tab_container.add_child(builtin_split)
 	
 	pathway_list = ItemList.new()
-	pathway_list.custom_minimum_size = Vector2(250, 0)
+	pathway_list.custom_minimum_size = Vector2(280, 0)
 	pathway_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pathway_list.item_selected.connect(_on_pathway_selected)
 	pathway_list.item_activated.connect(_on_item_activated)
@@ -58,7 +60,7 @@ func _create_ui() -> void:
 	
 	preview_panel = RichTextLabel.new()
 	preview_panel.bbcode_enabled = true
-	preview_panel.custom_minimum_size = Vector2(350, 0)
+	preview_panel.custom_minimum_size = Vector2(400, 0)
 	preview_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	builtin_split.add_child(preview_panel)
 	
@@ -92,28 +94,33 @@ func _create_ui() -> void:
 	load_button.pressed.connect(_on_load_pressed)
 	button_bar.add_child(load_button)
 
+
 func _populate_builtin_pathways() -> void:
 	builtin_pathways.clear()
 	pathway_list.clear()
 	
-	## Create built-in pathways
-	builtin_pathways.append(PathwayPreset.create_linear_pathway(3))
-	builtin_pathways.append(PathwayPreset.create_linear_pathway(5))
-	builtin_pathways.append(PathwayPreset.create_feedback_inhibition())
-	builtin_pathways.append(PathwayPreset.create_branched_pathway())
-	builtin_pathways.append(PathwayPreset.create_oscillator())
+	## Default/Simple pathway
+	builtin_pathways.append(PathwayPreset.create_default(4))
 	
-	## Populate list
+	## Real biochemistry pathways
+	builtin_pathways.append(PathwayPreset.create_glycolysis())
+	builtin_pathways.append(PathwayPreset.create_krebs_cycle())
+	builtin_pathways.append(PathwayPreset.create_pentose_phosphate())
+	builtin_pathways.append(PathwayPreset.create_beta_oxidation())
+	builtin_pathways.append(PathwayPreset.create_urea_cycle())
+	
+	## Populate list with icons based on difficulty
 	for preset in builtin_pathways:
-		var idx = pathway_list.add_item(preset.pathway_name)
+		var display_name = preset.pathway_name
+		var idx = pathway_list.add_item(display_name)
 		pathway_list.set_item_tooltip(idx, preset.description)
+
 
 func _scan_user_snapshots() -> void:
 	user_snapshots.clear()
 	
 	var dir = DirAccess.open("user://snapshots/")
 	if not dir:
-		## Create directory if it doesn't exist
 		DirAccess.make_dir_absolute("user://snapshots/")
 		return
 	
@@ -140,12 +147,14 @@ func _on_pathway_selected(index: int) -> void:
 	
 	var preset = builtin_pathways[index]
 	current_selection = preset
-	preview_panel.text = preset.get_summary()
+	preview_panel.text = _format_preview(preset)
 	load_button.disabled = false
+
 
 func _on_item_activated(index: int) -> void:
 	_on_pathway_selected(index)
 	_on_load_pressed()
+
 
 func _on_load_pressed() -> void:
 	if current_selection is PathwayPreset:
@@ -154,7 +163,59 @@ func _on_load_pressed() -> void:
 		snapshot_selected.emit(current_selection)
 	hide()
 
+
 func _on_cancel_pressed() -> void:
 	hide()
+
+#endregion
+
+#region Formatting
+
+func _format_preview(preset: PathwayPreset) -> String:
+	var lines: Array[String] = []
+	
+	lines.append("[b][font_size=18]%s[/font_size][/b]" % preset.pathway_name)
+	lines.append("")
+	lines.append("[color=gray]Difficulty: %s[/color]" % "★".repeat(preset.difficulty))
+	
+	if not preset.tags.is_empty():
+		lines.append("[color=gray]Tags: %s[/color]" % ", ".join(preset.tags))
+	
+	lines.append("")
+	lines.append(preset.description)
+	lines.append("")
+	lines.append("[b]Components:[/b]")
+	lines.append("  • %d molecules" % preset.molecules.size())
+	lines.append("  • %d enzymes" % preset.enzymes.size())
+	lines.append("  • %d genes" % preset.genes.size())
+	
+	## Count total reactions
+	var rxn_count = 0
+	for enz in preset.enzymes:
+		rxn_count += enz.reactions.size()
+	lines.append("  • %d reactions" % rxn_count)
+	
+	lines.append("")
+	lines.append("[b]Key Molecules:[/b]")
+	var mol_list: Array[String] = []
+	for i in range(mini(8, preset.molecules.size())):
+		mol_list.append(preset.molecules[i].molecule_name)
+	lines.append("  " + ", ".join(mol_list))
+	if preset.molecules.size() > 8:
+		lines.append("  ... and %d more" % (preset.molecules.size() - 8))
+	
+	lines.append("")
+	lines.append("[b]Key Enzymes:[/b]")
+	var enz_list: Array[String] = []
+	for i in range(mini(6, preset.enzymes.size())):
+		enz_list.append(preset.enzymes[i].enzyme_name)
+	lines.append("  " + ", ".join(enz_list))
+	if preset.enzymes.size() > 6:
+		lines.append("  ... and %d more" % (preset.enzymes.size() - 6))
+	
+	lines.append("")
+	lines.append("[color=gray]Suggested duration: %.0f seconds[/color]" % preset.suggested_duration)
+	
+	return "\n".join(lines)
 
 #endregion
