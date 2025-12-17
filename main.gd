@@ -760,9 +760,9 @@ func _on_chart_mode_selected(index: int) -> void:
 
 #region Drag and Drop
 
-func _on_panel_dropped(panel: DockPanel, _target_column: DraggableColumn) -> void:
+func _on_panel_dropped(panel: DockPanel, target_column: DraggableColumn, _at_index: int) -> void:
 	_save_current_layout()
-	print("Panel dropped: ", panel.panel_name)
+	print("Panel '%s' dropped in column %d" % [panel.panel_name, all_columns.find(target_column)])
 
 
 func _restore_layout() -> void:

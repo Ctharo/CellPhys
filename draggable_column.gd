@@ -3,7 +3,7 @@
 class_name DraggableColumn
 extends VSplitContainer
 
-signal panel_dropped(panel: DockPanel, at_index: int)
+signal panel_dropped(panel: DockPanel, target_column: DraggableColumn, at_index: int)
 signal panel_moved_out(panel: DockPanel)
 
 var drop_indicator: Panel = null
@@ -14,6 +14,7 @@ var hover_index: int = -1
 func _ready() -> void:
 	_create_drop_indicator()
 	mouse_filter = Control.MOUSE_FILTER_PASS
+
 
 func _create_drop_indicator() -> void:
 	drop_indicator = Panel.new()
@@ -45,6 +46,7 @@ func _can_drop_data(at_position: Vector2, data: Variant) -> bool:
 	_show_drop_indicator(at_position)
 	return true
 
+
 func _drop_data(at_position: Vector2, data: Variant) -> void:
 	_hide_drop_indicator()
 	
@@ -65,7 +67,8 @@ func _drop_data(at_position: Vector2, data: Variant) -> void:
 	
 	if old_parent and old_parent != self:
 		old_parent.remove_child(panel)
-		panel_moved_out.emit(panel)
+		if old_parent is DraggableColumn:
+			(old_parent as DraggableColumn).panel_moved_out.emit(panel)
 	elif old_parent == self:
 		remove_child(panel)
 	
@@ -78,7 +81,8 @@ func _drop_data(at_position: Vector2, data: Variant) -> void:
 	if target_index >= 0 and target_index < get_child_count():
 		move_child(panel, target_index)
 	
-	panel_dropped.emit(panel, target_index)
+	panel_dropped.emit(panel, self, target_index)
+
 
 func _calculate_drop_index(at_position: Vector2) -> int:
 	var local_y = at_position.y
@@ -98,6 +102,7 @@ func _calculate_drop_index(at_position: Vector2) -> int:
 			return i
 	
 	return children.size()
+
 
 func _notification(what: int) -> void:
 	match what:
@@ -124,7 +129,7 @@ func _show_drop_indicator(at_position: Vector2) -> void:
 	## Calculate where to move indicator
 	var actual_target = target_index
 	if indicator_idx < target_index:
-		actual_target = target_index  ## Already adjusted
+		actual_target = target_index
 	
 	if actual_target != indicator_idx:
 		if actual_target >= child_count:
@@ -133,6 +138,7 @@ func _show_drop_indicator(at_position: Vector2) -> void:
 			move_child(drop_indicator, actual_target)
 	
 	hover_index = target_index
+
 
 func _hide_drop_indicator() -> void:
 	if drop_indicator:
@@ -152,13 +158,16 @@ func move_panel(panel: DockPanel, to_index: int) -> void:
 	if current_index != to_index:
 		move_child(panel, to_index)
 
+
 ## Get index of a panel in this column
 func get_panel_index(panel: DockPanel) -> int:
 	return panel.get_index() if panel.get_parent() == self else -1
 
+
 ## Check if this column contains a panel
 func has_panel(panel: DockPanel) -> bool:
 	return panel.get_parent() == self
+
 
 ## Get all dock panels in this column
 func get_dock_panels() -> Array[DockPanel]:
@@ -167,5 +176,13 @@ func get_dock_panels() -> Array[DockPanel]:
 		if child is DockPanel:
 			panels.append(child)
 	return panels
+
+
+## Get column index (0=left, 1=middle, 2=right)
+func get_column_index() -> int:
+	var parent = get_parent()
+	if parent:
+		return get_index()
+	return -1
 
 #endregion
