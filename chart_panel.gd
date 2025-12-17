@@ -15,7 +15,7 @@ extends Panel
 
 #region Chart State
 
-var time_data: Array = []
+var time_data: Array[float] = []
 var series_data: Dictionary = {}  ## {name: Array[float]}
 var y_min: float = 0.0
 var y_max: float = 10.0
@@ -45,12 +45,16 @@ var color_assignments: Dictionary = {}  ## {series_name: color_index}
 func _ready() -> void:
 	## Ensure we redraw when resized
 	resized.connect(_on_resized)
+	## Initial redraw
+	queue_redraw()
 
 func _on_resized() -> void:
 	queue_redraw()
 
 func _draw() -> void:
 	var rect = get_rect()
+	
+	## Ensure minimum chart size
 	var chart_rect = Rect2(
 		margin.x, margin.y,
 		maxf(rect.size.x - margin.x * 2, 10),
@@ -150,17 +154,24 @@ func _draw_series(chart_rect: Rect2) -> void:
 		var points: PackedVector2Array = []
 		
 		var data_count = data.size()
-		var divisor = maxf(data_count - 1, 1)  ## Prevent division by zero
+		var divisor = maxf(float(data_count - 1), 1.0)
 		
 		for i in range(data_count):
 			var x = chart_rect.position.x + chart_rect.size.x * float(i) / divisor
-			var normalized_y = (data[i] - y_min) / y_range
+			var val = data[i]
+			if not (val is float or val is int):
+				val = 0.0
+			var normalized_y = (float(val) - y_min) / y_range
 			var y = chart_rect.position.y + chart_rect.size.y * (1.0 - normalized_y)
 			y = clampf(y, chart_rect.position.y, chart_rect.position.y + chart_rect.size.y)
 			points.append(Vector2(x, y))
 		
 		if points.size() >= 2:
 			draw_polyline(points, color, 2.0, true)
+			
+			## Draw endpoint marker
+			var last_point = points[points.size() - 1]
+			draw_circle(last_point, 4.0, color)
 
 func _draw_legend(chart_rect: Rect2) -> void:
 	if series_data.is_empty():
@@ -169,12 +180,13 @@ func _draw_legend(chart_rect: Rect2) -> void:
 	var font = ThemeDB.fallback_font
 	var font_size = 10
 	var line_height = 14
-	var legend_x = chart_rect.position.x + chart_rect.size.x - 100
+	var legend_x = chart_rect.position.x + chart_rect.size.x - 120
 	var legend_y = chart_rect.position.y + 10
 	
 	var idx = 0
 	for series_name in series_data:
-		if series_data[series_name].size() < 2:
+		var data: Array = series_data[series_name]
+		if data.size() < 2:
 			continue
 		
 		var color = _get_series_color(series_name)
@@ -183,11 +195,14 @@ func _draw_legend(chart_rect: Rect2) -> void:
 		## Color swatch
 		draw_rect(Rect2(legend_x, y - 8, 12, 10), color)
 		
-		## Name (truncated)
+		## Name (truncated) and current value
 		var display_name = series_name
-		if display_name.length() > 10:
-			display_name = display_name.substr(0, 8) + ".."
-		draw_string(font, Vector2(legend_x + 16, y), display_name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.WHITE)
+		if display_name.length() > 8:
+			display_name = display_name.substr(0, 6) + ".."
+		
+		var current_val = data[data.size() - 1] if data.size() > 0 else 0.0
+		var label_text = "%s: %.3f" % [display_name, current_val]
+		draw_string(font, Vector2(legend_x + 16, y), label_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.WHITE)
 		
 		idx += 1
 		if idx >= 10:
@@ -213,9 +228,30 @@ func _format_value(val: float) -> String:
 
 #region Public Interface
 
+## Main update method - accepts dictionary with "time" and "series" keys
 func update_chart(data: Dictionary, use_auto_scale: bool = true) -> void:
-	time_data = data.get("time", [])
-	series_data = data.get("series", {})
+	## Extract time data
+	var raw_time = data.get("time", [])
+	time_data.clear()
+	for t in raw_time:
+		if t is float or t is int:
+			time_data.append(float(t))
+	
+	## Extract series data
+	var raw_series = data.get("series", {})
+	series_data.clear()
+	
+	for series_name in raw_series:
+		var raw_values = raw_series[series_name]
+		var values: Array[float] = []
+		for v in raw_values:
+			if v is float or v is int:
+				values.append(float(v))
+			else:
+				values.append(0.0)
+		if values.size() > 0:
+			series_data[series_name] = values
+	
 	auto_scale = use_auto_scale
 	
 	## Check if we have valid data to display
@@ -226,14 +262,42 @@ func update_chart(data: Dictionary, use_auto_scale: bool = true) -> void:
 	
 	queue_redraw()
 
+## Alternative update method for direct data arrays
+func update_data(time_array: Array, series_dict: Dictionary, _title: String = "") -> void:
+	## Convert to internal format
+	time_data.clear()
+	for t in time_array:
+		if t is float or t is int:
+			time_data.append(float(t))
+	
+	series_data.clear()
+	for series_name in series_dict:
+		var raw_values = series_dict[series_name]
+		var values: Array[float] = []
+		for v in raw_values:
+			if v is float or v is int:
+				values.append(float(v))
+			else:
+				values.append(0.0)
+		if values.size() > 0:
+			series_data[series_name] = values
+	
+	_has_valid_data = _check_valid_data()
+	
+	if auto_scale and _has_valid_data:
+		_calculate_auto_scale()
+	
+	queue_redraw()
+
 func _check_valid_data() -> bool:
-	## Need at least some time data
+	## Need at least 2 time points
 	if time_data.size() < 2:
 		return false
 	
 	## Need at least one series with 2+ points
 	for series_name in series_data:
-		if series_data[series_name].size() >= 2:
+		var data: Array = series_data[series_name]
+		if data.size() >= 2:
 			return true
 	
 	return false

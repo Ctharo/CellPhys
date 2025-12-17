@@ -1,5 +1,5 @@
 ## Reusable panel for displaying and editing concentrations
-## Features: global unit selection, category lock, persistence, proportional element sizing
+## Features: global unit selection, category lock, persistence, wider spinbox controls
 class_name ConcentrationPanel
 extends VBoxContainer
 
@@ -29,7 +29,6 @@ class ItemEntry:
 	var container: HBoxContainer
 	var name_label: Label
 	var spinbox: SpinBox
-	var slider: HSlider
 	var lock_button: CheckBox
 	var info_label: Label
 	var id: String
@@ -87,6 +86,13 @@ func _create_header() -> void:
 	header_container = HBoxContainer.new()
 	header_container.add_theme_constant_override("separation", 8)
 	
+	## Category lock checkbox
+	category_lock_button = CheckBox.new()
+	category_lock_button.button_pressed = category_locked
+	category_lock_button.tooltip_text = "Lock all from simulation changes"
+	category_lock_button.toggled.connect(_on_category_lock_toggled)
+	header_container.add_child(category_lock_button)
+	
 	## Title
 	title_label = Label.new()
 	title_label.text = panel_title
@@ -95,31 +101,22 @@ func _create_header() -> void:
 	header_container.add_child(title_label)
 	
 	## Global unit selector
-	var unit_label = Label.new()
-	unit_label.text = "Unit:"
-	unit_label.label_settings = _label_settings_small
-	header_container.add_child(unit_label)
-	
 	global_unit_option = OptionButton.new()
-	global_unit_option.custom_minimum_size = Vector2(60, 0)
-	for i in range(UNIT_NAMES.size()):
-		global_unit_option.add_item(UNIT_NAMES[i], i)
+	global_unit_option.custom_minimum_size = Vector2(70, 0)
+	for unit_name in UNIT_NAMES:
+		global_unit_option.add_item(unit_name)
+	global_unit_option.selected = current_global_unit
 	global_unit_option.item_selected.connect(_on_global_unit_changed)
 	header_container.add_child(global_unit_option)
 	
-	## Category lock
-	category_lock_button = CheckBox.new()
-	category_lock_button.text = "🔒 All"
-	category_lock_button.tooltip_text = "Lock all %ss from simulation changes" % default_item_type
-	category_lock_button.toggled.connect(_on_category_lock_toggled)
-	header_container.add_child(category_lock_button)
-	
 	add_child(header_container)
+	
+	## Separator
+	var sep = HSeparator.new()
+	add_child(sep)
 
 func _load_settings() -> void:
 	var settings = SettingsManager.get_instance()
-	
-	## Load unit preference based on item type
 	if default_item_type == "molecule":
 		current_global_unit = settings.molecule_unit
 		category_locked = settings.lock_molecules
@@ -127,98 +124,62 @@ func _load_settings() -> void:
 		current_global_unit = settings.enzyme_unit
 		category_locked = settings.lock_enzymes
 	
-	## Apply to UI
-	global_unit_option.selected = current_global_unit
-	category_lock_button.button_pressed = category_locked
+	if global_unit_option:
+		global_unit_option.selected = current_global_unit
+	if category_lock_button:
+		category_lock_button.button_pressed = category_locked
 
 #endregion
 
-#region Public Interface
+#region Public API
 
-func set_panel_info(title: String, item_type: String, name: String = "") -> void:
-	panel_title = title
+func setup_items(items: Array, item_type: String = "molecule") -> void:
 	default_item_type = item_type
-	panel_name = name if name != "" else item_type
-	if title_label:
-		title_label.text = title
-	if category_lock_button:
-		category_lock_button.tooltip_text = "Lock all %ss from simulation changes" % item_type
-
-## Setup multiple items at once
-func setup_items(items: Array, item_type: String = "") -> void:
-	clear()
-	if item_type != "":
-		default_item_type = item_type
+	clear_items()
 	
 	for item in items:
-		add_item(item, default_item_type)
-
-## Add a single item to the panel
-func add_item(item, item_type: String = "") -> void:
-	if item_type == "":
-		item_type = default_item_type
-	
-	var item_id = _get_item_id(item, item_type)
-	
-	## Skip if already exists
-	if item_entries.has(item_id):
-		return
-	
-	var item_name = _get_item_name(item, item_type)
-	var item_conc = _get_item_concentration(item)
-	var is_locked = _get_item_locked(item, item_type)
-	var extra_info = _get_item_info(item, item_type)
-	
-	_create_item_entry(item_id, item_name, item_conc, is_locked, extra_info, item_type)
-
-func update_values(items: Array, item_type: String = "") -> void:
-	if item_type != "":
-		default_item_type = item_type
-	
-	var seen_ids: Array[String] = []
-	
-	for item in items:
-		var item_id = _get_item_id(item, default_item_type)
-		var item_name = _get_item_name(item, default_item_type)
+		var item_id = _get_item_id(item)
+		var item_name = _get_item_name(item)
 		var item_conc = _get_item_concentration(item)
-		var is_locked = _get_item_locked(item, default_item_type)
-		var extra_info = _get_item_info(item, default_item_type)
-		
-		seen_ids.append(item_id)
-		
-		if item_entries.has(item_id):
-			## Update existing entry
-			var entry = item_entries[item_id] as ItemEntry
-			entry.base_value_mm = item_conc
-			entry.lock_button.set_pressed_no_signal(is_locked)
-			entry.info_label.text = extra_info
-			_update_entry_display(entry)
-		else:
-			## Create new entry
-			_create_item_entry(item_id, item_name, item_conc, is_locked, extra_info, default_item_type)
-	
-	## Remove entries no longer present
-	var to_remove: Array[String] = []
-	for existing_id in item_entries.keys():
-		if existing_id not in seen_ids:
-			to_remove.append(existing_id)
-	
-	for id_to_remove in to_remove:
-		var entry = item_entries[id_to_remove]
-		entry.container.queue_free()
-		item_entries.erase(id_to_remove)
+		var is_locked = _get_item_locked(item)
+		_add_item_entry(item_id, item_name, item_conc, is_locked, item_type)
 
-func clear() -> void:
+func clear_items() -> void:
 	for entry in item_entries.values():
-		entry.container.queue_free()
+		if entry.container and is_instance_valid(entry.container):
+			entry.container.queue_free()
 	item_entries.clear()
 
+func update_values(items: Array, item_type: String = "") -> void:
+	for item in items:
+		var item_id = _get_item_id(item)
+		if item_entries.has(item_id):
+			var entry = item_entries[item_id] as ItemEntry
+			if entry.is_updating:
+				continue
+			
+			var is_locked = entry.lock_button.button_pressed or category_locked
+			if is_locked:
+				continue
+			
+			entry.is_updating = true
+			entry.base_value_mm = _get_item_concentration(item)
+			var display_val = entry.base_value_mm * UNIT_MULTIPLIERS[entry.current_unit]
+			entry.spinbox.set_value_no_signal(display_val)
+			entry.is_updating = false
+
+func is_item_locked(item_id: String) -> bool:
+	if category_locked:
+		return true
+	if item_entries.has(item_id):
+		return item_entries[item_id].lock_button.button_pressed
+	return false
+
 #endregion
 
-#region Entry Creation
+#region Item Creation
 
-func _create_item_entry(item_id: String, item_name: String, item_conc: float, 
-		is_locked: bool, extra_info: String, item_type: String) -> void:
+func _add_item_entry(item_id: String, item_name: String, item_conc: float, is_locked: bool, item_type: String) -> void:
 	var entry = ItemEntry.new()
 	entry.id = item_id
 	entry.display_name = item_name
@@ -228,9 +189,8 @@ func _create_item_entry(item_id: String, item_name: String, item_conc: float,
 	
 	var settings = SettingsManager.get_instance()
 	
-	## Container row - all children will expand proportionally
 	entry.container = HBoxContainer.new()
-	entry.container.add_theme_constant_override("separation", 6)
+	entry.container.add_theme_constant_override("separation", 8)
 	
 	## Lock checkbox (fixed size, no stretch)
 	entry.lock_button = CheckBox.new()
@@ -241,33 +201,19 @@ func _create_item_entry(item_id: String, item_name: String, item_conc: float,
 	entry.lock_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	entry.container.add_child(entry.lock_button)
 	
-	## Name label - proportional stretch
+	## Name label - fixed width
 	entry.name_label = Label.new()
 	entry.name_label.text = item_name
-	entry.name_label.custom_minimum_size = Vector2(settings.get_element_min_width("name"), 0)
+	entry.name_label.custom_minimum_size = Vector2(100, 0)
 	entry.name_label.label_settings = _label_settings_normal
 	entry.name_label.clip_text = true
-	entry.name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	entry.name_label.size_flags_stretch_ratio = settings.get_element_ratio("name", panel_name)
+	entry.name_label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	entry.container.add_child(entry.name_label)
 	
-	## Slider - proportional stretch
-	entry.slider = HSlider.new()
-	entry.slider.custom_minimum_size = Vector2(settings.get_element_min_width("slider"), 0)
-	entry.slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	entry.slider.size_flags_stretch_ratio = settings.get_element_ratio("slider", panel_name)
-	entry.slider.min_value = 0.0
-	entry.slider.max_value = _get_slider_max_for_unit(item_type, entry.current_unit)
-	entry.slider.step = 0.0001
-	entry.slider.value = item_conc * UNIT_MULTIPLIERS[entry.current_unit]
-	entry.slider.value_changed.connect(_on_slider_changed.bind(item_id))
-	entry.container.add_child(entry.slider)
-	
-	## SpinBox - proportional stretch
+	## SpinBox - takes remaining space (wider now without slider)
 	entry.spinbox = SpinBox.new()
-	entry.spinbox.custom_minimum_size = Vector2(settings.get_element_min_width("spinbox"), 0)
+	entry.spinbox.custom_minimum_size = Vector2(140, 0)
 	entry.spinbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	entry.spinbox.size_flags_stretch_ratio = settings.get_element_ratio("spinbox", panel_name)
 	entry.spinbox.min_value = 0.0
 	entry.spinbox.max_value = _get_spinbox_max_for_unit(item_type, entry.current_unit)
 	entry.spinbox.step = 0.0001
@@ -279,73 +225,37 @@ func _create_item_entry(item_id: String, item_name: String, item_conc: float,
 	entry.spinbox.value_changed.connect(_on_spinbox_changed.bind(item_id))
 	entry.container.add_child(entry.spinbox)
 	
-	## Info label - proportional stretch
+	## Info label (shows base mM value)
 	entry.info_label = Label.new()
-	entry.info_label.text = extra_info
-	entry.info_label.custom_minimum_size = Vector2(settings.get_element_min_width("info"), 0)
-	entry.info_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	entry.info_label.size_flags_stretch_ratio = settings.get_element_ratio("info", panel_name)
+	entry.info_label.custom_minimum_size = Vector2(70, 0)
 	entry.info_label.label_settings = _label_settings_info
-	entry.info_label.clip_text = true
+	entry.info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	entry.info_label.text = "(%.4f mM)" % item_conc
 	entry.container.add_child(entry.info_label)
 	
-	add_child(entry.container)
 	item_entries[item_id] = entry
+	add_child(entry.container)
 	
 	_update_lock_visual(entry)
-
-#endregion
-
-#region Display Updates
-
-func _update_entry_display(entry: ItemEntry) -> void:
-	if entry.is_updating:
-		return
-	entry.is_updating = true
-	
-	var display_value = entry.base_value_mm * UNIT_MULTIPLIERS[entry.current_unit]
-	entry.slider.value = display_value
-	entry.spinbox.set_value_no_signal(display_value)
-	
-	entry.is_updating = false
 
 func _update_all_units() -> void:
 	for entry in item_entries.values():
 		entry.current_unit = current_global_unit
 		
-		## Update slider range
-		entry.slider.max_value = _get_slider_max_for_unit(entry.item_type, entry.current_unit)
-		
 		## Update spinbox range and suffix
 		entry.spinbox.max_value = _get_spinbox_max_for_unit(entry.item_type, entry.current_unit)
 		entry.spinbox.suffix = " " + UNIT_NAMES[entry.current_unit]
 		
-		## Update displayed values
-		_update_entry_display(entry)
+		## Update displayed value
+		entry.is_updating = true
+		entry.spinbox.value = entry.base_value_mm * UNIT_MULTIPLIERS[entry.current_unit]
+		entry.is_updating = false
 
 func _update_lock_visual(entry: ItemEntry) -> void:
 	var is_locked = entry.lock_button.button_pressed or category_locked
 	var alpha = 0.6 if is_locked else 1.0
 	entry.name_label.modulate.a = alpha
-	entry.slider.editable = not category_locked
 	entry.spinbox.editable = not category_locked
-
-## Apply current settings to all entries (call after settings change)
-func apply_element_sizing() -> void:
-	var settings = SettingsManager.get_instance()
-	
-	for entry in item_entries.values():
-		entry.name_label.custom_minimum_size.x = settings.get_element_min_width("name")
-		entry.name_label.size_flags_stretch_ratio = settings.get_element_ratio("name", panel_name)
-		
-		entry.slider.custom_minimum_size.x = settings.get_element_min_width("slider")
-		entry.slider.size_flags_stretch_ratio = settings.get_element_ratio("slider", panel_name)
-		
-		entry.spinbox.custom_minimum_size.x = settings.get_element_min_width("spinbox")
-		entry.spinbox.size_flags_stretch_ratio = settings.get_element_ratio("spinbox", panel_name)
-		
-		entry.info_label.custom_minimum_size.x = settings.get_element_min_width("info")
-		entry.info_label.size_flags_stretch_ratio = settings.get_element_ratio("info", panel_name)
 
 #endregion
 
@@ -381,21 +291,6 @@ func _on_lock_toggled(pressed: bool, item_id: String) -> void:
 		_update_lock_visual(item_entries[item_id])
 	lock_changed.emit(item_id, pressed)
 
-func _on_slider_changed(value: float, item_id: String) -> void:
-	if not item_entries.has(item_id):
-		return
-	
-	var entry = item_entries[item_id] as ItemEntry
-	if entry.is_updating:
-		return
-	
-	entry.is_updating = true
-	entry.base_value_mm = value / UNIT_MULTIPLIERS[entry.current_unit]
-	entry.spinbox.value = value
-	entry.is_updating = false
-	
-	concentration_changed.emit(item_id, entry.base_value_mm)
-
 func _on_spinbox_changed(value: float, item_id: String) -> void:
 	if not item_entries.has(item_id):
 		return
@@ -406,7 +301,7 @@ func _on_spinbox_changed(value: float, item_id: String) -> void:
 	
 	entry.is_updating = true
 	entry.base_value_mm = value / UNIT_MULTIPLIERS[entry.current_unit]
-	entry.slider.value = value
+	entry.info_label.text = "(%.4f mM)" % entry.base_value_mm
 	entry.is_updating = false
 	
 	concentration_changed.emit(item_id, entry.base_value_mm)
@@ -415,87 +310,42 @@ func _on_spinbox_changed(value: float, item_id: String) -> void:
 
 #region Helpers
 
-func _get_slider_max_for_unit(item_type: String, unit: int) -> float:
-	var base_max: float
-	if item_type == "enzyme":
-		base_max = 0.1
-	else:
-		base_max = 20.0
-	return base_max * UNIT_MULTIPLIERS[unit]
-
 func _get_spinbox_max_for_unit(item_type: String, unit: int) -> float:
-	var base_max: float
-	if item_type == "enzyme":
-		base_max = 1.0
-	else:
-		base_max = 100.0
+	var base_max = 50.0 if item_type == "molecule" else 1.0
 	return base_max * UNIT_MULTIPLIERS[unit]
 
-func _get_item_id(item, item_type: String) -> String:
-	if item_type == "enzyme":
-		if item is EnzymeData:
-			return item.enzyme_id
-		return item.id if "id" in item else str(item)
-	else:
-		if item is MoleculeData:
-			return item.molecule_name
-		return item.name if "name" in item else str(item)
+func _get_item_id(item) -> String:
+	if item.has_method("get_id"):
+		return item.get_id()
+	if "molecule_name" in item:
+		return item.molecule_name
+	if "enzyme_id" in item:
+		return item.enzyme_id
+	if "id" in item:
+		return item.id
+	return str(item.get_instance_id())
 
-func _get_item_name(item, item_type: String) -> String:
-	if item_type == "enzyme":
-		if item is EnzymeData:
-			return item.enzyme_name
-		return item.name if "name" in item else str(item)
-	else:
-		if item is MoleculeData:
-			return item.molecule_name
-		return item.name if "name" in item else str(item)
+func _get_item_name(item) -> String:
+	if item.has_method("get_display_name"):
+		return item.get_display_name()
+	if "molecule_name" in item:
+		return item.molecule_name
+	if "enzyme_name" in item:
+		return item.enzyme_name
+	if "display_name" in item:
+		return item.display_name
+	if "name" in item:
+		return item.name
+	return "Unknown"
 
 func _get_item_concentration(item) -> float:
-	return item.concentration if "concentration" in item else 0.0
-
-func _get_item_locked(item, _item_type: String) -> bool:
-	return item.is_locked if "is_locked" in item else false
-
-func _get_item_info(item, item_type: String) -> String:
-	if item_type == "enzyme":
-		if item is EnzymeData:
-			if item.is_degradable:
-				return "(t½=%.0fs)" % item.half_life
-			return "(stable)"
-	else:
-		if item is MoleculeData:
-			return "(E=%.1f)" % item.potential_energy
-	return ""
-
-#endregion
-
-#region External Updates
-
-func update_concentration(item_id: String, new_value_mm: float) -> void:
-	if not item_entries.has(item_id):
-		return
-	
-	var entry = item_entries[item_id]
-	entry.base_value_mm = new_value_mm
-	_update_entry_display(entry)
-
-func set_item_locked(item_id: String, locked: bool) -> void:
-	if not item_entries.has(item_id):
-		return
-	
-	var entry = item_entries[item_id]
-	entry.lock_button.set_pressed_no_signal(locked)
-	_update_lock_visual(entry)
-
-func get_concentration(item_id: String) -> float:
-	if item_entries.has(item_id):
-		return item_entries[item_id].base_value_mm
+	if "concentration" in item:
+		return item.concentration
 	return 0.0
 
-func is_item_locked(item_id: String) -> bool:
-	if item_entries.has(item_id):
-		return item_entries[item_id].lock_button.button_pressed or category_locked
+func _get_item_locked(item) -> bool:
+	if "is_locked" in item:
+		return item.is_locked
 	return false
 
 #endregion
